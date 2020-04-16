@@ -28,27 +28,27 @@ public class arrayStorage {
 		Character charStr;
 		String strFile;
 		Pattern patternStr = new Pattern ();
-		// заполняем массив из файла
+// Р·Р°РїРѕР»РЅСЏРµРј РјР°СЃСЃРёРІ РёР· С„Р°Р№Р»Р°
 		for (int i = 0; i <= arrayStorage.size() - 1; i++) {
 			if ((strFile = bufRead.readLine()) != null) {
 				
 			}
 		}
 
-		System.out.println("Введите команду действия с резюме: "
-				+ "1. все (резюме),2. просмотр (конкретного резюме),3. добавить,4. удалить,5. количество (резюме). "
-				+ "Команда вводится без содержимого скобок");
+		System.out.println("Р’РІРµРґРёС‚Рµ РєРѕРјР°РЅРґСѓ РґРµР№СЃС‚РІРёСЏ СЃ СЂРµР·СЋРјРµ: "
+				+ "1. РІСЃРµ (СЂРµР·СЋРјРµ),2. РїСЂРѕСЃРјРѕС‚СЂ (РєРѕРЅРєСЂРµС‚РЅРѕРіРѕ СЂРµР·СЋРјРµ),3. РґРѕР±Р°РІРёС‚СЊ,4. СѓРґР°Р»РёС‚СЊ,5. РєРѕР»РёС‡РµСЃС‚РІРѕ (СЂРµР·СЋРјРµ). "
+				+ "РљРѕРјР°РЅРґР° РІРІРѕРґРёС‚СЃСЏ Р±РµР· СЃРѕРґРµСЂР¶РёРјРѕРіРѕ СЃРєРѕР±РѕРє");
 		command = sc.nextLine();
-		while (!command.equals("выход")) {
+		while (!command.equals("РІС‹С…РѕРґ")) {
 			switch (command) {
 
 			case "1":
-			case "все": { // вывод всех резюме
+			case "РІСЃРµ": { // РІС‹РІРѕРґ РІСЃРµС… СЂРµР·СЋРјРµ				
 				bufRead.reset();
 				String arrStr = null;
 
 				while ((arrStr = bufRead.readLine()) != null) {
-//				for (int i = 0; i <= arrayStorage.size() - 1; i++) { // реализация для консоли
+//				for (int i = 0; i <= arrayStorage.size() - 1; i++) { // СЂРµР°Р»РёР·Р°С†РёСЏ РґР»СЏ РєРѕРЅСЃРѕР»Рё
 //					arrStr = arrayStorage.get(i).toString();
 					System.out.println(arrStr);
 				}
@@ -56,9 +56,9 @@ public class arrayStorage {
 			}
 
 			case "2":
-			case "просмотр": { // просмотр резюме по фамилии
+			case "РїСЂРѕСЃРјРѕС‚СЂ": { // РїСЂРѕСЃРјРѕС‚СЂ СЂРµР·СЋРјРµ РїРѕ С„Р°РјРёР»РёРё
 				bufRead.reset();
-				System.out.println("Укажите ФИО");
+				System.out.println("РЈРєР°Р¶РёС‚Рµ Р¤РРћ");
 				String resumeStr = sc.nextLine();
 				int s = arrayStorage.size();
 				int q = 0;
@@ -74,13 +74,13 @@ public class arrayStorage {
 					;
 				}
 				if (q == 0) {
-					System.out.println("ФИО не найдено.");
+					System.out.println("Р¤РРћ РЅРµ РЅР°Р№РґРµРЅРѕ.");
 				}
 				break;
 			}
 
 			case "3":
-			case "добавить": { // добавление резюме
+			case "РґРѕР±Р°РІРёС‚СЊ": { // РґРѕР±Р°РІР»РµРЅРёРµ СЂРµР·СЋРјРµ
 				bufRead.reset();
 				System.out.println("Enter Name ");
 				String nameStr = sc.nextLine();
@@ -97,7 +97,7 @@ public class arrayStorage {
 				break;
 			}
 			case "4":
-			case "удалить": { // удалить резюме по ФИО
+			case "СѓРґР°Р»РёС‚СЊ": { // СѓРґР°Р»РёС‚СЊ СЂРµР·СЋРјРµ РїРѕ Р¤РРћ
 				bufRead.reset();
 				System.out.println("Enter Name for delete ");
 				String delStr = sc.nextLine();
@@ -106,13 +106,13 @@ public class arrayStorage {
 					String s = arrayStorage.get(i).getName();
 					if (delStr.equals(s)) {
 						arrayStorage.remove(i);
-						System.out.println("удалено ");
+						System.out.println("СѓРґР°Р»РµРЅРѕ ");
 					}
 				}
 				break;
 			}
 			case "5":
-			case "количество": { // сколько всего резюме в базе
+			case "РєРѕР»РёС‡РµСЃС‚РІРѕ": { // СЃРєРѕР»СЊРєРѕ РІСЃРµРіРѕ СЂРµР·СЋРјРµ РІ Р±Р°Р·Рµ
 				bufRead.reset();
 				int q = 0;
 				q = arrayStorage.size();
@@ -120,7 +120,7 @@ public class arrayStorage {
 				break;
 			}
 			} // switch
-			System.out.println("Введите следующую команду ");
+			System.out.println("Р’РІРµРґРёС‚Рµ СЃР»РµРґСѓСЋС‰СѓСЋ РєРѕРјР°РЅРґСѓ ");
 			command = sc.nextLine();
 		}
 
