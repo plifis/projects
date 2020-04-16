@@ -1,0 +1,590 @@
+/*
+ * Copyright (C) 2006 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.android.internal.telephony;
+
+import android.content.ComponentName;
+import android.content.Context;
+import android.net.LocalServerSocket;
+import android.os.Looper;
+import android.provider.Settings;
+import android.telephony.Rlog;
+import android.telephony.TelephonyManager;
+
+import com.android.internal.telephony.cdma.CDMALTEPhone;
+import com.android.internal.telephony.cdma.CDMAPhone;
+import com.android.internal.telephony.cdma.CdmaSubscriptionSourceManager;
+import com.android.internal.telephony.gsm.GSMPhone;
+import com.android.internal.telephony.sip.SipPhone;
+import com.android.internal.telephony.sip.SipPhoneFactory;
+import com.android.internal.telephony.uicc.UiccController;
+
+/**
+ * {@hide}
+ */
+public class PhoneFactory {
+    static final String LOG_TAG = "PhoneFactory";
+    static final int SOCKET_OPEN_RETRY_MILLIS = 2 * 1000;
+    static final int SOCKET_OPEN_MAX_RETRY = 3;
+
+    //***** Class Variables
+
+    static private Phone sProxyPhone = null;
+    static private CommandsInterface sCommandsInterface = null;
+
+    static private boolean sMadeDefaults = false;
+    static private PhoneNotifier sPhoneNotifier;
+    static private Looper sLooper;
+    static private Context sContext;
+
+    //***** Class Methods
+
+    public static void makeDefaultPhones(Context context) {
+        makeDefaultPhone(context);
+    }
+
+    /**
+     * FIXME replace this with some other way of making these
+     * instances
+     */
+    public static void makeDefaultPhone(Context context) {
+        synchronized(Phone.class) {
+            if (!sMadeDefaults) {
+                sLooper = Looper.myLooper();
+                sContext = context;
+
+                if (sLooper == null) {
+                    throw new RuntimeException(
+                        "PhoneFactory.makeDefaultPhone must be called from Looper thread");
+                }
+
+                int retryCount = 0;
+                for(;;) {
+                    boolean hasException = false;
+                    retryCount ++;
+
+                    try {
+                        // use UNIX domain socket to
+                        // prevent subsequent initialization
+                        new LocalServerSocket("com.android.internal.telephony");
+                    } catch (java.io.IOException ex) {
+                        hasException = true;
+                    }
+
+                    if ( !hasException ) {
+                        break;
+                    } else if (retryCount > SOCKET_OPEN_MAX_RETRY) {
+                        throw new RuntimeException("PhoneFactory probably already running");
+                    } else {
+                        try {
+                            Thread.sleep(SOCKET_OPEN_RETRY_MILLIS);
+                        } catch (InterruptedException er) {
+                        }
+                    }
+                }
+
+                sPhoneNotifier = new DefaultPhoneNotifier();
+
+                // Get preferred network mode
+                int preferredNetworkMode = RILConstants.PREFERRED_NETWORK_MODE;
+                if (TelephonyManager.getLteOnCdmaModeStatic() == PhoneConstants.LTE_ON_CDMA_TRUE) {
+                    preferredNetworkMode = Phone.NT_MODE_GLOBAL;
+                }
+                int networkMode = Settings.Global.getInt(context.getContentResolver(),
+                        Settings.Global.PREFERRED_NETWORK_MODE, preferredNetworkMode);
+                Rlog.i(LOG_TAG, "Network Mode set to " + Integer.toString(networkMode));
+
+                int cdmaSubscription = CdmaSubscriptionSourceManager.getDefault(context);
+                Rlog.i(LOG_TAG, "Cdma Subscription set to " + cdmaSubscription);
+
+                //reads the system properties and makes commandsinterface
+                sCommandsInterface = new RIL(context, networkMode, cdmaSubscription);
+
+                // Instantiate UiccController so that all other classes can just call getInstance()
+                UiccController.make(context, sCommandsInterface);
+
+                int phoneType = TelephonyManager.getPhoneType(networkMode);
+                if (phoneType == PhoneConstants.PHONE_TYPE_GSM) {
+                    Rlog.i(LOG_TAG, "Creating GSMPhone");
+                    sProxyPhone = new PhoneProxy(new GSMPhone(context,
+                            sCommandsInterface, sPhoneNotifier));
+                } else if (phoneType == PhoneConstants.PHONE_TYPE_CDMA) {
+                    switch (TelephonyManager.getLteOnCdmaModeStatic()) {
+                        case PhoneConstants.LTE_ON_CDMA_TRUE:
+                            Rlog.i(LOG_TAG, "Creating CDMALTEPhone");
+                            sProxyPhone = new PhoneProxy(new CDMALTEPhone(context,
+                                sCommandsInterface, sPhoneNotifier));
+                            break;
+                        case PhoneConstants.LTE_ON_CDMA_FALSE:
+                        default:
+                            Rlog.i(LOG_TAG, "Creating CDMAPhone");
+                            sProxyPhone = new PhoneProxy(new CDMAPhone(context,
+                                    sCommandsInterface, sPhoneNotifier));
+                            break;
+                    }
+                }
+
+                // Ensure that we have a default SMS app. Requesting the app with
+                // updateIfNeeded set to true is enough to configure a default SMS app.
+                ComponentName componentName =
+                        SmsApplication.getDefaultSmsApplication(context, true /* updateIfNeeded */);
+                String packageName = "NONE";
+                if (componentName != null) {
+                    packageName = componentName.getPackageName();
+                }
+                Rlog.i(LOG_TAG, "defaultSmsApplication: " + packageName);
+
+                // Set up monitor to watch for changes to SMS packages
+                SmsApplication.initSmsPackageMonitor(context);
+
+                sMadeDefaults = true;
+            }
+        }
+    }
+
+    public static Phone getDefaultPhone() {
+        if (sLooper != Looper.myLooper()) {
+            throw new RuntimeException(
+                "PhoneFactory.getDefaultPhone must be called from Looper thread");
+        }
+
+        if (!sMadeDefaults) {
+            throw new IllegalStateException("Default phones haven't been made yet!");
+        }
+       return sProxyPhone;
+    }
+
+    public static Phone getCdmaPhone() {
+        Phone phone;
+        synchronized(PhoneProxy.lockForRadioTechnologyChange) {
+            switch (TelephonyManager.getLteOnCdmaModeStatic()) {
+                case PhoneConstants.LTE_ON_CDMA_TRUE: {
+                    phone = new CDMALTEPhone(sContext, sCommandsInterface, sPhoneNotifier);
+                    break;
+                }
+                case PhoneConstants.LTE_ON_CDMA_FALSE:
+                case PhoneConstants.LTE_ON_CDMA_UNKNOWN:
+                default: {
+                    phone = new CDMAPhone(sContext, sCommandsInterface, sPhoneNotifier);
+                    break;
+                }
+            }
+        }
+        return phone;
+    }
+
+    public static Phone getGsmPhone() {
+        synchronized(PhoneProxy.lockForRadioTechnologyChange) {
+            Phone phone = new GSMPhone(sContext, sCommandsInterface, sPhoneNotifier);
+            return phone;
+        }
+    }
+
+    /**
+     * Makes a {@link SipPhone} object.
+     * @param sipUri the local SIP URI the phone runs on
+     * @return the {@code SipPhone} object or null if the SIP URI is not valid
+     */
+    public static SipPhone makeSipPhone(String sipUri) {
+        return SipPhoneFactory.makePhone(sipUri, sContext, sPhoneNotifier);
+    }
+}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     " Vim syntax file
+" Language:	Makeindex style file, *.ist
+" Maintainer:	Peter Meszaros <pmeszaros@effice.hu>
+" Last Change:	2012 Jan 08 by Thilo Six
+
+" quit when a syntax file was already loaded
+if exists("b:current_syntax")
+  finish
+endif
+
+let s:cpo_save = &cpo
+set cpo&vim
+
+setlocal iskeyword=$,@,48-57,_
+
+syn case ignore
+syn keyword IstInpSpec  actual  arg_close arg_open encap       escape
+syn keyword IstInpSpec  keyword level     quote    range_close range_open
+syn keyword IstInpSpec  page_compositor
+
+syn keyword IstOutSpec	preamble	 postamble	  setpage_prefix   setpage_suffix   group_skip
+syn keyword IstOutSpec	headings_flag	 heading_prefix   heading_suffix
+syn keyword IstOutSpec	lethead_flag	 lethead_prefix   lethead_suffix
+syn keyword IstOutSpec	symhead_positive symhead_negative numhead_positive numhead_negative
+syn keyword IstOutSpec	item_0		 item_1		  item_2	   item_01
+syn keyword IstOutSpec	item_x1		 item_12	  item_x2
+syn keyword IstOutSpec	delim_0		 delim_1	  delim_2
+syn keyword IstOutSpec	delim_n		 delim_r	  delim_t
+syn keyword IstOutSpec	encap_prefix	 encap_infix	  encap_suffix
+syn keyword IstOutSpec	line_max	 indent_space	  indent_length
+syn keyword IstOutSpec	suffix_2p	 suffix_3p	  suffix_mp
+
+syn region  IstString	   matchgroup=IstDoubleQuote start=+"+ skip=+\\"+ end=+"+ contains=IstSpecial
+syn match   IstCharacter   "'.'"
+syn match   IstNumber	   "\d\+"
+syn match   IstComment	   "^[\t ]*%.*$"	 contains=IstTodo
+syn match   IstSpecial	   "\\\\\|{\|}\|#\|\\n"  contained
+syn match   IstTodo	   "DEBUG\|TODO"	 contained
+
+" Define the default highlighting.
+" Only when an item doesn't have highlighting yet
+
+hi def link IstInpSpec	Type
+hi def link IstOutSpec	Identifier
+hi def link IstString	String
+hi def link IstNumber	Number
+hi def link IstComment	Comment
+hi def link IstTodo	Todo
+hi def link IstSpecial	Special
+hi def link IstDoubleQuote	Label
+hi def link IstCharacter	Label
+
+
+let b:current_syntax = "ist"
+
+let &cpo = s:cpo_save
+unlet s:cpo_save
+" vim: ts=8 sw=2
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                " Vim syntax file
+" Language:	JavaCC, a Java Compiler Compiler written by JavaSoft
+" Maintainer:	Claudio Fleiner <claudio@fleiner.com>
+" URL:		http://www.fleiner.com/vim/syntax/javacc.vim
+" Last Change:	2012 Oct 05
+
+" Uses java.vim, and adds a few special things for JavaCC Parser files.
+" Those files usually have the extension  *.jj
+
+" quit when a syntax file was already loaded
+if exists("b:current_syntax")
+  finish
+endif
+
+let s:cpo_save = &cpo
+set cpo&vim
+
+" source the java.vim file
+runtime! syntax/java.vim
+unlet b:current_syntax
+
+"remove catching errors caused by wrong parenthesis (does not work in javacc
+"files) (first define them in case they have not been defined in java)
+syn match	javaParen "--"
+syn match	javaParenError "--"
+syn match	javaInParen "--"
+syn match	javaError2 "--"
+syn clear	javaParen
+syn clear	javaParenError
+syn clear	javaInParen
+syn clear	javaError2
+
+" remove function definitions (they look different) (first define in
+" in case it was not defined in java.vim)
+"syn match javaFuncDef "--"
+syn clear javaFuncDef
+syn match javaFuncDef "[$_a-zA-Z][$_a-zA-Z0-9_. \[\]]*([^-+*/()]*)[ \t]*:" contains=javaType
+
+syn keyword javaccPackages options DEBUG_PARSER DEBUG_LOOKAHEAD DEBUG_TOKEN_MANAGER
+syn keyword javaccPackages COMMON_TOKEN_ACTION IGNORE_CASE CHOICE_AMBIGUITY_CHECK
+syn keyword javaccPackages OTHER_AMBIGUITY_CHECK STATIC LOOKAHEAD ERROR_REPORTING
+syn keyword javaccPackages USER_TOKEN_MANAGER  USER_CHAR_STREAM JAVA_UNICODE_ESCAPE
+syn keyword javaccPackages UNICODE_INPUT JDK_VERSION
+syn match javaccPackages "PARSER_END([^)]*)"
+syn match javaccPackages "PARSER_BEGIN([^)]*)"
+syn match javaccSpecToken "<EOF>"
+" the dot is necessary as otherwise it will be matched as a keyword.
+syn match javaccSpecToken ".LOOKAHEAD("ms=s+1,me=e-1
+syn match javaccToken "<[^> \t]*>"
+syn keyword javaccActionToken TOKEN SKIP MORE SPECIAL_TOKEN
+syn keyword javaccError DEBUG IGNORE_IN_BNF
+
+" Define the default highlighting.
+" Only when an item doesn't have highlighting yet
+hi def link javaccSpecToken Statement
+hi def link javaccActionToken Type
+hi def link javaccPackages javaScopeDecl
+hi def link javaccToken String
+hi def link javaccError Error
+
+let b:current_syntax = "javacc"
+let &cpo = s:cpo_save
+unlet s:cpo_save
+
+" vim: ts=8
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                MZ       ÿÿ  ¸       @                                   €   º ´	Í!¸LÍ!This program cannot be run in DOS mode.
+$       PE  d†	      ¼  >   ğ ' \   ¸             @                        0    E   €                                              œ     è   à  0                   Ğ                                              À                          .text   ˆZ      \                 ` P`.data   ˆ    p   "   `              @ `À.rdata  0        "   ‚              @ P@.buildid5    Ğ      ¤              @ 0@.pdata  0   à      ¦              @ 0@.xdata  (   ğ      ª              @ 0@.bss    À                         € `À.idata  œ        ®              @ 0À.rsrc   è         ¶              @ 0À                                                                                                                                                                                                                                                                                Hƒì(HX  è R  E1À1Ò1Éè4R  E1À1Ò1Éè8R  E1À1Ò1Éè<R  E1À1Ò1ÉHƒÄ(é<R  UH‰å]Ãf.„     UH‰åHƒì Hƒ=€   t0H‡  ÿ9 H…Àt<H…  H‰Áÿ, H…Àt	Hà  ÿĞLW_  H    1ÒHƒÄ ]éO  @ H‰ÿÿÿëĞ€    UH‰å]ÃSHƒì HD  è¿N  H‰ÃèçN  H‹HA¸à  H‰Úè•O  HƒÄ [éÊ  f.„     ATUWVSHƒì I‰ÔA‹P0H‰ÏL‰ÆD‰Ëè¡7  ƒøÿ‰ÅtjD‹F0H‰ú‰ÁèLK  ƒøÿt7ƒı
+„~   L‹L$xI‰ğL‰â‰ÙèŒK  ƒøÿ„   ‰ØHƒÄ [^_]A\ÃfD  H‹T$xH‰ñès(  ¸ÿÿÿÿHƒÄ [^_]A\Ã öG@uÚƒûuÂL‹L$xI‰ğL‰â¹   è0K  ƒøÿt8¸   ëÆ@ H‹D$pƒ ‹F…ÀtL‹L$xI‰ğL‰â¹
+   èüJ  ƒøÿ…pÿÿÿH‹T$xH‰ñè66  ¸ÿÿÿÿëD  f.„     AVAUATUWVSHƒì@A‹@¿   H‰ÍI‰ÕL‰ÃM‰ÌÇD$<    AÇ@$    …À„f  ƒø„   1öƒ{~Cè_M  H‹HH{  M‰àèN  H¥  ‹l$<èM  H‰Ãè4M  H‹HDOÿA‰èH‰ÚèáM  ‰ğHƒÄ@[^_]A\A]A^Ã1Àƒş
+M‰á”ÀI‰ØL‰ê‰ñÇèJ  ƒøÿ„½   ‹S0H‰éèâ5  ƒøÿ‰Æ„W  D‹KE…Éuƒşw¹FôƒøvF÷ƒø‡†  D  ƒşu›‹S0H‰éè 5  ƒøÿ‰Æt D‹C0H‰ê‰ÁèKI  ƒøÿ„á  ƒş
+„)  M‰áI‰ØL‰ê¹
+   è†I  ƒøÿt1‹CƒD$<ƒÇ…À„aÿÿÿM‰áI‰ØL‰ê¹
+   è[I  ƒøÿ…EÿÿÿfL‰âH‰Ùè•4  ‹C$öÄ…p  ¾ÿÿÿÿéîşÿÿLt$<ë'„     1Àƒş
+M‰á”ÀI‰ØL‰ê‰ñÇèI  ƒøÿt±‹S0H‰éèÖ4  ƒøÿ‰ÆtOD‹SE…ÒuƒşwÁF÷ƒøvFôƒø‡~   ƒşu¨L‰d$(L‰t$ A¹   I‰ØL‰êH‰éèÊüÿÿƒøÿu¤é[ÿÿÿöE@…¸   öC%„ şÿÿ1öƒ{‰{Hùıÿÿé7şÿÿ„     M‰áI‰ØL‰ê¹   è]H  ƒøÿ…Gşÿÿéÿşÿÿ‹C$D‹CƒÈE…À‰C$„÷şÿÿ‹K(…Ét‹S,…ÒuÇC,   èÿJ  H‹HHŒ  M‰àè¬K  HŒ  è°J  H‰ÅèØJ  H‹HA‰ùA‰ğH‰êè†K  ‹C$éœşÿÿL‰âH‰Ùèã$  öC%„şÿÿ‰{HéˆşÿÿL‰âH‰ÙèÆ$  ‹C$élşÿÿ@ f.„     ATUWVSHƒì H‰ÎH‰ÕM‰ÄD‰ÏèõJ  ƒøÿ‰ÃtnH‰ò‰ÁèdL  ƒøÿtƒû
+tH‰ê‰ùèK  ƒøÿt0‰øHƒÄ [^_]A\ÃH‹D$pƒ A‹D$…ÀtâH‰ê¹
+   èàJ  ƒøÿuĞH‹T$xL‰á¿ÿÿÿÿèÙ1  ë¼€    öF@uƒÿuªH‰ê¹   è¨J  ƒøÿu˜ëÆH‹T$xL‰á¿ÿÿÿÿèî#  ëff.„     AWAVAUATUWVSHƒìHA‹@H‰ÍI‰ÔL‰ÇM‰ÎÇD$<    AÇ@$    =R  „u  ~C=_  „)  ò  =a  „  =ä  L-‹Y  „×   ÇG$   »ÿÿÿÿé›   @ ƒø„  ¡   …ÀL-Xu  xÑ‹W0…ÒHJu  LOêƒø¡   ‹G…À„Â  ƒø„¨   ¾   1Ûƒ~Cè×H  H‹HHó‰  M‰ğè„I  HŠ  ‹l$<è„H  H‰Çè¬H  H‹HDNÿA‰èH‰úèYI  ‰ØHƒÄH[^_]A\A]A^A_ÃfD  =µ  L-´l  …)ÿÿÿ‹W0…Ò]ÿÿÿL-œt  ‹_…Û…  ‹G…À„  ƒøu¨¾   ë*f.„     A‹L 1Àƒû
+”ÀL‰âÆèéH  ƒøÿ„°   H‰éè˜H  HcØƒûÿ„l  D‹_E…Ûu#ƒû¾C÷ƒøvCôƒø‡
+  f.„     ƒûu›H‰éèSH  ƒøÿ‰ÃtH‰ê‰ÁèÂI  ƒøÿ„F  ƒû
+„°  L‰â¹
+   ècH  ƒøÿt.‹OƒD$<ƒÆ…É„kÿÿÿL‰â¹
+   è>H  ƒøÿ…UÿÿÿD  L‰òH‰ùè5/  »ÿÿÿÿé²şÿÿL-„[  éÑşÿÿL-x_  éÅşÿÿ ¾   L|$<ë @ A‹L 1Àƒû
+”ÀL‰âÆèÙG  ƒøÿt¤H‰éèŒG  HcØƒûÿtd‹G…ÀuƒûÈC÷ƒøvCôƒø‡  @ ƒûu«L‰t$(L‰|$ A¹   I‰øL‰âH‰éè-üÿÿƒøÿ„OÿÿÿH‰éè,G  HcØƒûÿu @ öE@„¢ıÿÿL‰òH‰ù»ÿÿÿÿè¦   éØıÿÿ=\  L-¤b  „ğıÿÿéıÿÿf„     èKF  H‹HHg‡  M‰ğèøF  H¶‡  ‹wèùE  H‰Ãè!F  H‹HA‰ğH‰ÚèÒF  éıÿÿL-Fn  éëüÿÿL-9f  é†ıÿÿ@ L‰â¹   è³F  ƒøÿ…ÊıÿÿéuşÿÿD  D‹WƒO$E…Ò„jşÿÿD‹O(E…ÉtD‹G,E…ÀuÇG,   è¡E  H‹HH½†  M‰ğèNF  H'‡  èRE  H‰ÇèzE  H‹HA‰ñA‰ØH‰úè(F  éşÿÿL‰òH‰ùèˆ  éşıÿÿ1ÀÃWVSHƒì0H‰×L‰D$(H‰ÎèE  ‹èâF  H‰Ãè
+E  ‹ ‰G,èE  L‹D$(H‹HHp‡  I‰ñè¸E  èóD  H‹HH`‡  I‰Øè E  ¸ÿÿÿÿHƒÄ0[^_Ã VSHƒì8¶A¹   H‰ËHk‡  „ÀtC ƒè0<E‡Å   ¶ÀHcHÈÿàf„     ƒJ@E1Éf„     HƒÃ¶„ÀuÅE…ÉtƒJ@HƒÄ8[^ÃD  ƒJ@E1Éë×€    J@€   ëÇ€    ƒJ@E1Éë·€    ƒJ@@ëªf.„     ƒJ@E1Éë—€    ƒJ@ E1Éë‡€    ƒJ@E1Éétÿÿÿ@ J@   édÿÿÿ@ L‰D$(èÖC  L‹D$(H‹HHC†  èD  ¾3H?†  è‚C  H‰ÃèªC  H‹HA‰ğH‰Úè[D  ¹   èñC  ATUWVSHƒì0L‰ÃH‰ÎH‰×LcÿèTE  ÆDÿ H‰ùè7E  I9ÄH‰Ås+èZC  H‹HHx‡  H‡  ‰\$ A‰éI‰øH‰D$(èôC  H‰ğHƒÄ0[^_]A\ÃfD  WVSHƒì H‰ÖL‰ÃL‰Ïè{C  …Àt‹S¸ÿÿÿÿ…ÒuHƒÄ [^_Ã èÛB  ‹ ‰C,èáB  L‹D$`H‹HHN…  èŒC  €?wHú†  tH!‡  è„B  H‰Ãè¬B  H‹HI‰ğH‰Úè]C  èˆB  ‹èQD  H‰Ãè‰B  H‹HHö„  I‰Øè6C  ¸ÿÿÿÿHƒÄ [^_Ãf„     é»C  f.„     ékD  f.„     Hì¨   HT$ èOC  1Ò…Àu‹D$0% ğ  =    ”Â¶ÂHÄ¨   Ã f.„     UWVSHì¨   ‰×HT$ H‰ËL‰ÆL‰Íè C  …Àu<‹T$0â ğ  ú €  tú    ”À…ÿ•Â!Ğƒğ¶À÷ØHÄ¨   [^_]ÃfD  ‹V¸ÿÿÿÿ…ÒtâI‰èH‰òH‰ÙèFüÿÿHÄ¨   [^_]Ãf.„     WVSHì    H‰ÖHT$ H‰ËL‰ÇèÓB  …Àu!‹D$0% ğ  = €  •À¶À÷ØHÄ    [^_Ã‹V¸ÿÿÿÿ…ÒtéI‰øH‰òH‰ÙèÔûÿÿHÄ    [^_Ãf„     SHƒì H|…  è¿@  H‰Ãèç@  H‹PH‰Ùè»A  H‡  èŸ@  H‰ÃèÇ@  H‹PH‰ÙHƒÄ [é–A  fD  WVH=©‰  ¸   H‰Ê¹	   H‰Öó¦A—À’ÁA8ÈtH=‰  ¹	   H‰Öó¦”À¶À^_ÃD  f.„     VSHƒì(H‰ËHh‰  è@  H‰ÆèC@  H‹HI‰ØH‰òèô@  H}‰  èø?  H‰Æè @  H‹HH‰òèÔ@  H•‰  èØ?  H‰Æè @  H‹HH‰òè´@  Hµ‰  è¸?  H‰Æèà?  H‹HH‰òè”@  Hå‰  è˜?  H‰ÆèÀ?  H‹HH‰òèt@  HŠ  èx?  H‰Æè ?  H‹HH‰òèT@  H-Š  èX?  H‰Æè€?  H‹HH‰òè4@  HUŠ  è8?  H‰Æè`?  H‹HH‰òè@  HuŠ  è?  H‰Æè@?  H‹HH‰òèô?  H•Š  èø>  H‰Æè ?  H‹HH‰òèÔ?  H­Š  èØ>  H‰Æè ?  H‹HH‰òè´?  H‰Ùè<şÿÿ…ÀHÃŠ  uHêŠ  è¥>  H‰ÆèÍ>  H‹HH‰òè?  H‹  è…>  H‰Æè­>  H‹HH‰òèa?  HJ‹  èe>  H‰Æè>  H‹HH‰òèA?  Hj‹  èE>  H‰Æèm>  H‹HH‰òè!?  Hz‹  è%>  H‰ÆèM>  H‹HH‰òè?  Hº‹  è>  H‰Æè->  H‹HH‰òèá>  HÊ‹  èå=  H‰Æè>  H‹HH‰òèÁ>  Hâ‹  èÅ=  H‰Æèí=  H‹HH‰òè¡>  Hò‹  è¥=  H‰ÆèÍ=  H‹HH‰òè>  HŒ  è…=  H‰Æè­=  H‹HH‰òèa>  HŠŒ  èe=  H‰Æè=  H‹HH‰òèA>  H²Œ  èE=  H‰Æèm=  H‹HH‰òè!>  H  è%=  H‰ÆèM=  H‹HH‰òè>  H‰Ùè‰üÿÿ…ÀH  uHO  èò<  H‰Ãè=  H‹HH‰ÚèÎ=  H_  èÒ<  H‰Ãèú<  H‹HH‰Úè®=  Hw  è²<  H‰ÃèÚ<  H‹HH‰Úè=  H‡  è’<  H‰Ãèº<  H‹HH‰Úèn=  H¯  èr<  H‰Ãèš<  H‹HH‰ÚèN=  H×  èR<  H‰Ãèz<  H‹HH‰Úè.=  Hç  è2<  H‰ÃèZ<  H‹HH‰Úè=  H  è<  H‰Ãè:<  H‹HH‰Úèî<  Hw  èò;  H‰Ãè<  H‹HH‰ÚèÎ<  H§  èÒ;  H‰Ãèú;  H‹HH‰ÚHƒÄ([^é¨<  „     VSHƒì8H‰ÎH‰ÓèÏ;  H‹HH¥  LŒ  H‹  I‰ğH‰D$ èi<  H  èm;  H‰Æè•;  H‹PH‰ñèi<  H}  èM;  H‰Æèu;  H‹PH‰ñèI<  H‚  è-;  H‰ÆèU;  H‹PH‰ñè)<  H‚  è;  H‰Æè5;  H‹PH‰ñè	<  è$;  H‹HHš  I‰ØèÑ;  è;  L‹HH‘  A¸-   º   HƒÄ8[^éë;  f.„     H—  é„;  @ HŠ  ét;  @ Hz  é4;  @ WVSHƒì H‰Ëë@ Æ /º\   H‰Ùè0<  H…Àuëº/   H‰Ùèn<  H…Àt'H8  ¹   H‰ŞH‰×ó¦tÆ  H‰ÚH‰ĞHƒÄ [^_ÃH  ëìf„     UWVSHƒì(H‰×èà;  H…ÀH‰ÆHÇ    „   H‰ÁèeÿÿÿH‰ÁH‰ÅèÚ;  HHè1;  H…ÀH‰ÃtMLº  HÁ  I‰èH‰ÁèP;  H‰ñH‰èÅ:  H‰Ùè;  ƒøÿtH‚  ‰Áè::  H…Àt	HƒÄ([^_]ÃH‹è”:  1ÀHÇ    HƒÄ([^_]Ãf1Éëãff.„     UWVSHì¨   H‰×HT$ H‰ËL‰ÆL‰Íè:  …Àu+‹T$0â ğ  ú    „…   H‰HÄ¨   [^_]ÃfD  ‹F…Àu¸ÿÿÿÿHÄ¨   [^_]Ã„     èû8  ‹ ‰F,èñ8  ‹èº:  H‰Æèò8  H‹HHW{  I‰èI‰Ùèœ9  è×8  H‹HHD{  I‰ğè„9  ë™fH‰Ùèè8  H…ÀtƒH‰¸   ë…f„     UWVSHƒì(H…ÉH‰ËH‰×Ç    tgè9  ƒøÿ‰Æ„÷   =ï   •Â=„   •À„ÂtS†ÿÿÿƒøvHH‰Ú‰ñè^:  ƒøÿt)Ç    H‰ØHƒÄ([^_]Ã€    öC@„í   fD  1ÀHƒÄ([^_]ÃD  H‰Ùè˜8  ƒøÿ‰ÅtÑşÿ   „•   =ÿ   uşş   „ã   H‰Ùèj8  ƒøÿ„±   şï   „å   ƒı1”Áş„   ”Â„Ñtf=•   u_H‰Ùè38  öC@…yÿÿÿƒø3…Í   Ç   H‰ØédÿÿÿföC@…VÿÿÿÇ    H‰Øé(ÿÿÿ„     =ş   tiH‰Ùèá7  ƒøÿt,H‰Ú‰ÁèR9  ƒøÿ„ÿÿÿH‰Ú‰éè?9  ƒøÿ…ÎşÿÿéÿÿÿöC@…öşÿÿH‰Ú¹ÿÿÿÿè9  ƒøÿuËéßşÿÿÇ   H‰ØéÓşÿÿÇ   H‰ØéÄşÿÿfı»   uŒ=¿   u…Ç   H‰Øé¥şÿÿH‰Ú‰ÁèÉ8  ƒÀ„şÿÿ¸•   éZÿÿÿfD  WVSHƒì ‹B0H‰ËH‰ÖL‰Ç…Àtz‹R<…Òtbƒø„*  ƒø„à   ƒøubL?Š  H;Š  è7  …ÀˆB  ƒ~«   èA6  H‹HH³x  I‰øèî6  HŠ  ë_D  ƒø„‡   ƒèƒøwƒ~DtyLŠ  HÙ‰  H‰Ùè³6  …Àˆİ   ƒ~~Jèà5  H‹HHRx  I‰øè6  HŞ‰  è‘5  H¤‰  H‰Çè‚5  H‰Æèª5  H‹HI‰øH‰òè[6  H‰ØHƒÄ [^_ÃL‰  H`‰  H‰Ùè:6  …Àxhƒ~~Õèk5  H‹HHİw  I‰øè6  H]‰  ë‰LC‰  H‰  èü5  …Àx*ƒ~~—è-5  H‹HHŸw  I‰øèÚ5  H‰  éHÿÿÿ1Àéoÿÿÿ€    WVSHƒì`ƒùH‰ÖL‰Ç„º   ”   ƒùtƒù…—   HÛˆ  H\$ è•4  A¸@   H‰ÂH‰Ùè$ñÿÿÆD$_ èª4  H‹HHw  I‰øèW5  H®ˆ  è[4  H‰Çèƒ4  H‹HI‰ÙI‰ğH‰úè15  HƒÄ`[^_Ã„     Hqˆ  ëˆ€    ƒùuH%ˆ  épÿÿÿ…É~ËH\$ ë€@ H'ˆ  éUÿÿÿ@ Hƒì(ƒù„§   ~Uƒùt,ƒùuwè4  L‹HHQˆ  A¸
+   º   HƒÄ(éã4   èÛ3  L‹HHˆ  A¸
+   º   HƒÄ(é¼4  ƒùu'è²3  L‹HHà‡  A¸
+   º   HƒÄ(é“4   è‹3  L‹HHå‡  A¸
+   º   HƒÄ(él4  èg3  L‹HH ‡  A¸
+   º   HƒÄ(éH4  „     VSHƒì(‹A$H‰ËH‰Ö¨u¨…å   ¨€uVöÄ…˜   HƒÄ([^Ãè3  H‹HH}u  I‰ğè¸3  Ha‡  è¼2  H‰Ãèä2  H‹HLb‡  H‰ÚHƒÄ([^é‹3  èÆ2  H‹HH8u  I‰ğès3  H\‡  èw2  H‰ÃèŸ2  H‹HA¹   L‡  H‰ÚHƒÄ([^é@3  è{2  H‹HHít  I‰ğè(3  ‹sHHN‡  è)2  H‰ÃèQ2  A‰ñH‹Hë³„     è;2  H‹HH­t  I‰ğèè2  H±†  ‹sèé1  H‰Ãè2  H‹HA‰ğH‰ÚHƒÄ([^é¼2  ff.„     UWVSHƒì(Æ AÆ  H‰Ë‹A0H‰ÖL‰ÇL‰Íƒøt]ƒøtzÆD.ÿ ‹C0ƒèƒøv	HƒÄ([^_]Ã1Éèø2  L‹D$pH‰ÂH‰ùèîÿÿ‹C<…Àt‹C0ƒøtZƒøtvH‹D$pÆDÿ HƒÄ([^_]ÃHJ…  è41  I‰èH‰ÂH‰ñèÆíÿÿ‹C0ƒøu†HE…  è1  I‰èH‰ÂH‰ñè¤íÿÿégÿÿÿH	…  èó0  L‹D$pH‰ÂH‰ùèƒíÿÿ‹C0ë…H…  èÒ0  L‹D$pH‰ÂH‰ùèbíÿÿéiÿÿÿ f.„     AUATUWVSHì˜   Ld$PHl$0H‰ËI‰ÕL‰ÆL‰ÏHÇD$ @   A¹    M‰àH‰êè±şÿÿ‹C$¨…  ¨…Ş   ¨…V  ¨ tTH…ötOèx0  H‹HHêr  I‰øè%1  HV†  è)0  H‰ÃèQ0  H‹HI‰ñM‰èH‰Úèÿ0  HÄ˜   [^_]A\A]Ã¨…Z  ¨…  ¨€…  öÄ…M  ‹„$ğ   …À…^  èù/  H‹HHkr  I‰øè¦0  €|$0 H‰ù…h  è#ïÿÿ…À„[  H…öHù…  …]ÿÿÿH$†  ëRfè«/  H‹HHr  I‰øèX0  H…öHö„  …*ÿÿÿH…  ëèz/  H‹HHìq  I‰øè'0  H „  è+/  H‰ÃèS/  H‹HM‰èH‰Úè0  HÄ˜   [^_]A\A]Ã è+/  H‹HHq  I‰øèØ/  HÉ„  ë¯è
+/  H‹HH|q  I‰øè·/  H€ƒ  ‹sè¸.  H‰Ãèà.  H‹HA‰ğH‰Úè‘/  éşÿÿèÇ.  H‹HH9q  I‰øèt/  Hƒ  éHÿÿÿ„     è›.  H‹HHq  I‰øèH/  H…ötcHü†  éşÿÿ€    è»íÿÿ…À„  H…öH¡…  „x  è.  H‰ÃèF.  H‹HM‰éH‰t$(L‰d$ I‰èH‰Úèê.  éçıÿÿD  HÁ†  é´şÿÿ@ è.  H‹HH}p  I‰øè¸.  H¡‚  è¼-  H‰Ãèä-  H‹HA¹   M‰èH‰Úè.  éŒıÿÿf.„     è»-  H‹HH-p  I‰øèh.  H‘‚  ‹sHèi-  H‰Ãè‘-  H‹HA‰ñM‰èH‰Úè?.  é<ıÿÿf.„     ƒ{t3H…öHP„  …üüÿÿHs„  éîıÿÿƒ{t-H…ötqHT…  éäşÿÿH…öHÅƒ  …ÉüÿÿHèƒ  é»ıÿÿH…öHÁ„  …¸şÿÿHì„  èÏ,  H‰Ãè÷,  H‹HM‰éL‰d$ I‰èH‰Úè -  éüÿÿHT„  ëÎH…  ëÅf„     VSHƒì8‹A$H‰Ó¨t‹I…É…¥   HƒÄ8[^Ã¨t:‹Q…ÒtîL‰D$(è‰,  L‹D$(H‹HHön  è4-  H%‚  é   „     ¨€t·‹A…Àt°L‰D$(èK,  L‹D$(H‹HH¸n  èö,  Hß€  èú+  H‰Æè",  H‹HA¹   I‰ØH‰òHƒÄ8[^éÇ,  €    L‰D$(èö+  L‹D$(H‹HHcn  è¡,  H  è¥+  H‰ÆèÍ+  H‹HI‰ØH‰òHƒÄ8[^éx,  „     AVAUATUWVSHƒì ‹Y@D‹¤$€   H‰ÎH‰×E‰ÆD‰ÍD‹¬$ˆ   öÃ t>‹A…À…3  E…É…*  HƒÄ [^_]A\A]A^ÃE…ätì‹V…ÒuöF$ußf„     öÃ@…Ç   öÃ…Y  öÃ…t  öÃ…  öÃ…ª  öÃt-öF$„ç  èÿ*  L‹HHöƒ  A¸   º   èä+  ‹^@€? t<öÃ€tº/   H‰ùèº,  H…À„  Hxƒã…È  è¯*  H‹PH‰ùèƒ+  ‹^@€ç…G  è’*  H‹P¹
+   HƒÄ [^_]A\A]A^éF+  fD  ‹šÊ  …À…+ÿÿÿöÃ…¹  öÃ…p  öÃ…7  öÃ…ş  öÃ…Å  €? t,ƒã…—  è"*  L‹HHƒ  A¸   º   è+  ‹^@€ç„;  èö)  H‹P1Éè»*  ‹^@ÇÊ     öÃ„§şÿÿèĞ)  H‹HHÁ‚  A‰èè}*  ‹^@öÃ„Œşÿÿè¬)  H‹HH‚  E‰àèY*  ‹^@öÃ„qşÿÿèˆ)  H‹HHy‚  E‰èè5*  ‹^@öÃ„VşÿÿD‰ñèAõÿÿ‹^@éFşÿÿf„     èK)  1ÉH‹Pé·şÿÿPşƒú†Ùıÿÿƒø…ÕıÿÿE…í„¸ıÿÿéÇıÿÿè)  L‹HH‚  A¸   º   èı)  €? ‹^@„Qşÿÿéşÿÿèç(  L‹HHĞ  A¸   º   èÌ)  éşÿÿ€    è»(  H‹P¹
+   è})  é½şÿÿ„     è›(  L‹HHU  A¸   º   è€)  ‹^@éşÿÿ„     èk(  L‹HHK  A¸   º   èP)  ‹^@éşÿÿ„     è;(  L‹HH  A¸
+   º   è )  ‹^@éÚıÿÿ„     è(  L‹HH×€  A¸   º   èğ(  ‹^@é¡ıÿÿ„     èÛ'  L‹HH€  A¸   º   èÀ(  ‹^@éhıÿÿ„     º\   H‰ùè“)  H…À…ÙüÿÿéØüÿÿD  è‹'  L‹HHt€  A¸   º   èp(  éDıÿÿf.„     AWAVAUATUWVSHƒìHH‹„$°   1ÛE1äH‰ÏÇB$    H‰ÕH‰ùM‰ÆE‰ÏH‰D$8E1í1öè®'  ƒøÿt@f„     ƒøPôƒúvP÷ƒúvƒM$ƒø
+tB1Òƒø‰Æ”ÂÓH‰ùèn'  ƒøÿuÉöG@tCè¾&  ‹ ‰E,‹E…ÀuRHƒÄH[^_]A\A]A^A_ÃƒştAƒÄ‰Æë½ AƒÅƒë‰Æë¯D  ‰\$(D‰d$ E‰éE‰øL‰òH‰éèÆúÿÿë²@ è[&  ‹è$(  H‰Ãè\&  L‹D$8H‹HHÉh  è'  HX  è&  H‰Æè3&  H‹HM‰ğH‰òèä&  è&  H‹HHŒh  I‰ØHƒÄH[^_]A\A]A^A_é¼&  ff.„     €9 téáÿÿfD  ƒJ@Ãf.„     WVSHƒì H‰ËH‰Öè®%  ‹ ‰C,‹C…ÀuHƒÄ [^_Ãf.„     è‹%  ‹èT'  H‰ÇèŒ%  H‹HHşg  I‰ğè9&  H²~  è=%  H‰Ãèe%  H‹HI‰øH‰ÚHƒÄ [^_é&  D  f.„     ATUWVSHƒì ƒzH‰ÎH‰ÓL‰ÅL‰Ï~‹Bƒøtlƒø„§   HS0H‰ñègìÿÿH…À„Ï   ‹C0‰‹C0…Àu2‹Sƒútƒúu%ÇC0   HƒÄ [^_]A\Ã ÇC0   f„     1ÀHƒÄ [^_]A\Ã è«$  H‹HHg  I‰èèX%  Hó}  è\$  I‰Äè„$  H‹HL‰âè8%  ‹Cƒø…Yÿÿÿèg$  H‹HHÙf  I‰èè%  HÌ}  è$  I‰Äè@$  H‹HL‰âèô$  éÿÿÿH‰êH‰ÙèTşÿÿ¸ÿÿÿÿé\ÿÿÿf.„     AUATUWVSHƒì(AƒxH‹¬$€   H‰ÎI‰ÔL‰ÃL‰Ï~A‹@ƒø„Ì   ƒø„  HS0H‰ñè'ëÿÿH…À„/  ƒ{~‹K0I‰èH‰úèªîÿÿ‹K0…Éu‹Cƒøtƒøtf1ÉH=™w  èØ$  ¹   H‰Æó¦t<‹S4…Òu‹C8…Àt ‹C0…À~GI‰èH‰ÚL‰áè¹ìÿÿH…À”À¶À÷ØHƒÄ([^_]A\A]ÃÇCD   ë»€    ÇC0   ë‘€    1ÀëÎÇC0   ézÿÿÿè#  H‹HH}e  I‰èè¸#  HS|  è¼"  I‰Åèä"  H‹HL‰êè˜#  ‹Cƒø…ùşÿÿèÇ"  H‹HH9e  I‰èèt#  H,|  èx"  I‰Åè "  H‹HL‰êèT#  é¼şÿÿH‰êH‰Ùè´üÿÿ¸ÿÿÿÿé,ÿÿÿf.„     AWAVAUATUWVSHìh  H¼$à   H‰ÕH‰ÎAÇ@$    H‰éL‰ÃH‰úM‰ÌHÇD$H    èM#  …Àu‹„$ğ   % ğ  =    „’   M‰áI‰Øº   H‰ñèÿßÿÿ…À…§  H‰úH‰ñè#  …Àu‹„$ğ   % ğ  =    „Á   H‰úH‰éèæ"  …ÀtbHT$`H‰ñè5#  …ÀA‰Å„¾   D‹CE…À…]  ¾ÿÿÿÿ‰ğHÄh  [^_]A\A]A^A_Ãf‹S …Ò…cÿÿÿƒK$¾ÿÿÿÿëÒf.„     ‹„$ğ   % ğ  =    u‹ƒ{ u…M‰àH‰ÚH‰éèÉßÿÿ…À„oÿÿÿD‹K,ƒK$ E…Éu‡ÇC,   ¾ÿÿÿÿé{ÿÿÿ M‰àH‰ÚH‰ñè’ßÿÿ…À„)ÿÿÿƒK$¾ÿÿÿÿéTÿÿÿH£t  H‰ñè!  H…ÀI‰Ç„'ÿÿÿHT$@H‰éè„æÿÿH…ÀI‰Æ„É   L‰d$ I‰ñI‰ØH‰ÂL‰ùè’üÿÿ…À…Ï   ‹C0ƒèƒø‡  M‰áI‰ØL‰òL‰ùÿ”$Ø  …À•À¶À÷Ø‰D$0öC%„¬   ‹C,…À…™   ÇC,   é   f„     è+   ‹ ‰C,è!   ‹èê!  H‰Ãè"   H‹HH‡b  M‰àI‰ñèÌ   è   H‹HHtb  I‰Øè´   éRşÿÿ‹K…ÉtèÓ  ‹…Ò…š  ‹C,…ÀuÇC,   ‹C0ƒèƒø†¬  ÇD$0ÿÿÿÿLwy  L‰d$ I‰ØH‰òL‰ùèzÜÿÿƒøÿ„ó   M…öt%H‹T$@LLy  L‰d$ I‰ØL‰ñèPÜÿÿƒøÿ„×   ‹D$0…À…Ë   ‹…À„  1ÉèJ!  ‰Á‰ÆèA!  ‹T$pH‹L$@÷Ö!òèo  ‰Æ…ö„U  D‹sE…ö„   è  ‹ ‰C,èù  ‹èÂ   I‰Æèú  H‹HHla  M‰àè§  L‹D$@H«x  L‰D$0è¡  I‰ÇèÉ  L‹D$0H‹HL‰úèx  è³  H‹HH a  M‰ğè`  ëM…ö‰D$0…ÿÿÿ¾ÿÿÿÿH‹L$@H…Ét	èœ   …ÀuMH‰úH‰éH‰l$Hèˆ  …À„D  H‹L$@èF  é¹üÿÿƒK$¾ÿÿÿÿéªüÿÿf‹T$pH‹L$@èr  ‰Æéşşÿÿè  ƒ8t©D‹KE…É…  H‰úH‰éH‰l$H¾ÿÿÿÿè  ëM‰áI‰ØL‰òL‰ùÿ”$Ğ  …À•À¶À÷Ø‰D$0é#şÿÿ€    ‹…À„F  ‹C…À…»   H‰úH‰éH‰l$HèË  …Àu‹„$ğ   % ğ  =    tAH‹T$HH‹L$@èå  …À‰Æ„ÿÿÿ‹K¾ÿÿÿÿ…É…{  E…í„ÿÿÿH‹L$HèH  éóşÿÿƒ{ u¹HT$HM‰áI‰ØH‰éèºãÿÿ…ÀA‰Åˆ‘  H‹T$HH‹L$@è€  …À‰Æt¯ë„     ÇD$0ÿÿÿÿé™üÿÿ H‹„$   H‹L$@HT$PH‰D$PH‹„$    H‰D$Xè  ƒøÿ‰Æ…ÿÿÿD‹SE…Ò„/şÿÿèª  ‹ ‰C,è   ‹èi  L‹|$@I‰Æèœ  H‹HH_  M‰àM‰ùèF  éÉıÿÿD‹D$|‹T$xH‹L$@è½  …À„Ÿşÿÿ‹C…À„=  D‹{E…ÿ…o  1ÉèF  ‰Á‰Æè=  ‹T$pH‹L$@÷Ö!òèk  …À‰Æ„[şÿÿé÷üÿÿ‹„$ğ   % ğ  =    „¥ıÿÿ…ö…ıÿÿédşÿÿ„     èÛ  ‹ ‰C,èÑ  ‹èš  H‰ÃèÒ  H‹HHD^  M‰àè  H v  L‹d$HH‹|$@èy  H‰Æè¡  H‹HM‰áI‰øH‰òèO  èŠ  H‹HH÷]  I‰Øè7  E…ít#Hsv  è6  H‰Ãè^  H‹HI‰èH‰Úè  Hv  H‹t$@è  H‰Ãè6  H‹HI‰ğH‰Ú¾ÿÿÿÿèâ  é²ıÿÿD‹[E…Û„€üÿÿèû  ‹ ‰C,èñ  ‹èº  H‰Æèò  H‹HHd]  M‰àèŸ  H(u  L‹|$@è  I‰ÆèÆ  H‹HM‰øL‰òèw  è²  H‹HH]  I‰ğ¾ÿÿÿÿèZ  é
+üÿÿè€  ‹ ‰C,èv  ‹è?  H‹t$@H‰Ãèr  H‹HH×\  M‰àI‰ñè  èW  H‹HHÄ\  I‰Øè  é+üÿÿè*  ‹ ‰C,è   ‹èé  H‰D$0è  H‹HH‘\  M‰àèÌ  H¥s  èĞ  H‰D$8èö  L‹D$0H‹HH‹T$8è£  éúÿÿèÙ  H‹HHK\  M‰àè†  HÏs  èŠ  H‰Æè²  H‹HI‰èH‰òèc  éQıÿÿD‹C¾ÿÿÿÿE…À„,ûÿÿè‡  H‹HHù[  M‰àè4  Ht  è8  H‰Ãè`  H‹HI‰èH‰Úè  H
+t  H‹|$@è  H‰Ãè8  H‹HI‰øH‰Úèé  éÄúÿÿ@ ATUWVSHƒì0Ç   ÇA    L‰ÅM‰ÌH‰ÖH‰Ëèø  H‹Hè  º   ‰Áè  èŞ  H‹Hèu  º   ‰Áèé  èÄ  H‹xè»  H‹HL9m  H‰t$ I‰ØH‰úèôÿÿ…Àul‹C0ƒèƒøv1èŒ  H‹xèƒ  H‹HI‰ñI‰ØH‰úH‰èHƒÄ0[^_]A\HÿàfD  è[  H‹xèR  H‹HI‰ñI‰ØH‰úL‰àHƒÄ0[^_]A\HÿàD  ¸ÿÿÿÿHƒÄ0[^_]A\ÃWVSHƒì H‰ËH‰Öèş  ‹ ‰C,‹C…ÀuHƒÄ [^_Ãf.„     èÛ  ‹è¤  H‰ÇèÜ  H‹HHNZ  I‰ğè‰  Hs  è  H‰Ãèµ  H‹HI‰øH‰ÚHƒÄ [^_é_  D  f.„     WVSHƒì öA%H‰ËH‰ÖtHƒÄ [^_ÃD  è[  ‹ ‰C,‹C…ÀtâèJ  ‹è  H‰ÇèK  H‹HH½Y  I‰ğèø  Hqr  èü  H‰Ãè$  H‹HI‰øH‰ÚHƒÄ [^_éÎ  @ f.„     WVSHƒì H‰Î‰×è  ƒøÿ‰Ãu¸ÿÿÿÿHƒÄ [^_ÃH‰ñèc  ƒøÿtæ‰ÂÁâÚÁãØƒÿDÂHƒÄ [^_Ã@ AWAVAUATUWVSHƒìHH‹„$°   1Û1íH‰ÏI‰×M‰ÅE‰ÎÇB$    E1äH‰D$81ö€    A‹W0H‰ùèdÿÿÿƒøÿt?ƒøwPôƒúvP÷ƒúvAƒO$ƒø
+t1Òƒø‰Æ”ÂÓëÂfƒşt;ƒÅ‰Æë´@ öG@t:è  ‹ A‰G,A‹G…ÀuGHƒÄH[^_]A\A]A^A_ÃfD  AƒÄƒë‰Æérÿÿÿf‰\$(‰l$ E‰áE‰ğL‰êL‰ùèêÿÿë¾D  è«  ‹èt  H‰Ãè¬  L‹D$8H‹HHX  èW  H¨n  è[  H‰Æèƒ  H‹HM‰èH‰òè4  èo  H‹HHÜW  I‰ØHƒÄH[^_]A\A]A^A_é  ff.„     ATUWVSHìÀ   ÇB$    M‰ÁH‰ÓL‰ÇI‰Ğº   H‰ÎÇD$<    èÓÿÿ…À…S  HT$@H‰ñè  …À„’   H¥h  H‰ñè  H…ÀH‰Å„³   LL$<I‰øH‰ÚH‰Áè€ïÿÿ…À…  ‹C0H‰|$ I‰ğD‹L$<H‰ÚH‰éƒèƒø†Ö   è1íÿÿLTn  H‰éH‰|$ I‰ØH‰ò1íèUÑÿÿƒøÿ@”Å÷İ‰èHÄÀ   [^_]A\Ã‹D$P% ğ  =    …ZÿÿÿI‰øH‰ÚH‰ñèÊÒÿÿ…À„DÿÿÿƒK$½ÿÿÿÿë»€    ‹C½ÿÿÿÿ…Àt¨èÿ  ‹èÈ  I‰Äèğ  ‹ ‰C,èö  H‹HHMo  I‰øI‰ñè   èÛ  H‹HH;o  M‰àèˆ  éWÿÿÿ èıÿÿé%ÿÿÿfD  ƒK$½ÿÿÿÿé6ÿÿÿfLcm  H‰éH‰|$ I‰ØH‰ò½ÿÿÿÿèaĞÿÿéÿÿÿff.„     UWVSHƒìHÇA$    H‰×H‰ËÇD$<    èN  H‹Hèå  º   ‰ÁèY  è4  H‹HLL$<I‰øH‰Úèàíÿÿ…À‰Æuj‹C0‹l$<ƒèƒøv+è  H‹HLjn  H‰|$ A‰éH‰Úè‹ëÿÿ‰ğHƒÄH[^_]ÃèÛ  H‹HL?n  H‰|$ A‰éH‰Úèüÿÿ‰ğHƒÄH[^_]ÃD  ¾ÿÿÿÿë¾f„     AWAVAUATUWVSHƒìHE1Û¾   A¿   AkA‰ÍI‰ÔL‰ÃL‰Œ$¨   AÇ     D9íAÇ@   AÇ@    AÇ@    AÇ@    AÇ@    AÇ@     AÇ@$    AÇ@(   AÇ@,    AÇ@0    AÇ@4    AÇ@<    AÇ@@    AÇ@D    @  LcÍIÁáO4I‹€8-…¶   @öÆ„¬   H=5m  H‰Æ¹   ó¦@—Æ’Â)Ö@¾ö…ö„  H=m  ¹   H‰Æó¦„-  H=şl  ¹   H‰Æó¦„  H=îl  ¹   H‰Æó¦tH=Şl  ¹   H‰Æó¦…  }ÇC8   A9ıR  ¾   fD  A‰ë‰ıé9ÿÿÿfD  ‹;ÇC(    …ÿt#E…ÿ„*  }A9ıC  E1ÿëÉf„     D‹S@E…Ò„—   L‹„$°   H‰ÚH‰ÁèûÿÿL‹„$°   I‹H‰ÙèıãÿÿA‰ëAkD9íŒÀşÿÿE…íh  D‹C(E…À„[  ‹K@…É…Œ  H‹”$°   L‹Œ$È   H‰ÙL‹„$À   èL÷ÿÿ‹S…Ò„*  H‹”$°   H‰Ùèİÿÿé  H‹”$È   L‹Œ$°   I‰ØH‰ÁH‰T$(H‹”$À   H‰T$ H‰Âè¬íÿÿD‹KE…É„Rÿÿÿ‰D$ L‹Œ$°   }I‹E1ÀH‰ÙèßÿÿA9ı¹şÿÿ‰ıé5ÿÿÿfH‹Œ$È   H‹”$À   K|øL‹Œ$°   I‰ØH‰T$ H‰L$(H‰ÂH‹è;íÿÿD‹[E…Ûu&}A9ı~@A¿   é_şÿÿ}A9ıSşÿÿ‰ıéÏşÿÿ‰D$ L‹Œ$°   H‰ÙH‹M‹}èŞÿÿA9ıÀE…í  ‹C(…À…¯şÿÿé
+  H=Äj  ¹   H‰Æó¦„	  H=°j  ¹   H‰Æó¦„ò   H=¤j  ¹   H‰Æó¦„$  H=j  ¹   H‰Æó¦„  H=j  ¹   H‰Æó¦„€  H=xj  ¹   H‰Æó¦…†  }ÇC    A9ıhıÿÿ‰ıéïıÿÿD‰\$8è’  L‹„$°   H‹HHüP  è:  H‹k  H‹} è:  H‰Æèb  H‹HI‰øH‰òè  D‹\$8ÇC,   ÇC(    AkE…ÿtz‹C,HƒÄH[^_]A\A]A^A_Ã }ÇC   A9ıÒüÿÿ‰ıéYıÿÿfD  H‹”$°   H‰Ùè€úÿÿL‹„$°   Hjb  H‰Ùèáÿÿë }ÇC   A9ı‰üÿÿ‰ıéıÿÿ‰ïè¶  L‹„$°   H‹HH P  Hcÿè[  Hk  I‹|üøèZ  H‰Æè‚  H‹HI‰øH‰òè3  ÇC,   ¸   é.ÿÿÿH‹Œ$°   èõÌÿÿ‹C,éÿÿÿ}ÇC   A9ıÿûÿÿ‰ıé†üÿÿ H=ìh  ¹   H‰Æó¦t]H=Üh  ¹   H‰Æó¦tJH=Ğh  ¹   H‰Æó¦tH=Àh  ¹   H‰Æó¦u>}ÇC    A9ı–ûÿÿ‰ıéüÿÿf.„     }ÇC    A9ırûÿÿ‰ıéùûÿÿH=wh  ¹   H‰Æó¦tH=gh  ¹
+   H‰Æó¦u}ÇC   A9ı2ûÿÿ‰ıé¹ûÿÿH=Dh  ¹   H‰Æó¦tH=4h  ¹
+   H‰Æó¦u}ÇC   A9ıòúÿÿ‰ıéyûÿÿH=h  ¹   H‰Æó¦tH=h  ¹
+   H‰Æó¦u}ÇC4   A9ı²úÿÿ‰ıé9ûÿÿH=Şg  ¹   H‰Æó¦tH=Îg  ¹   H‰Æó¦u!}ÇC8    ÇC4    A9ıkúÿÿ‰ıéòúÿÿH=§g  ¹   H‰Æó¦tH=—g  ¹   H‰Æó¦u}ÇC     A9ı+úÿÿ‰ıé²úÿÿH=yg  ¹   H‰Æó¦tH=ig  ¹   H‰Æó¦u}ÇC    A9ıëùÿÿ‰ıérúÿÿH=Mg  ¹   H‰Æó¦tH==g  ¹   H‰Æó¦u}ÇC    A9ı«ùÿÿ‰ıé2úÿÿH="g  ¹   H‰Æó¦t|H=g  ¹
+   H‰Æó¦tiH=	g  ¹   H‰Æó¦„œ   H=õf  ¹
+   H‰Æó¦„…   H=èf  ¹   H‰Æó¦uE}ÇC    ÇC<    ÇCD    A9ıùÿÿ‰ıé£ùÿÿH‹”$¨   H‹Œ$°   è[Îÿÿ‹C,éÿûÿÿH=—f  ¹   H‰Æó¦u)}ÇC   A9ıÒøÿÿ‰ıéYùÿÿÿ”$¸   ‹C,éÃûÿÿH=^f  ¹   H‰Æó¦t1H=ff  ¹   H‰Æó¦…Œ   }ÇCµ  A9ıøÿÿ‰ıéùÿÿè^ÄÿÿD‹s·À‰CE…ötFèš	  L‹„$°   H‹HHL  èB
+  Hîe  ‹{èC	  H‰Æèk	  H‹HA‰øH‰òè
+  ‹Cƒø~‡}A9ıøÿÿ‰ıé”øÿÿH=Èe  ¹   H‰Æó¦u}ÇCR  A9ıà÷ÿÿ‰ıégøÿÿH= e  ¹   H‰Æó¦u}ÇC\  A9ı³÷ÿÿ‰ıé:øÿÿH=xe  ¹   H‰Æó¦u}ÇC_  A9ı†÷ÿÿ‰ıéøÿÿH=Pe  ¹   H‰Æó¦u}ÇCa  A9ıY÷ÿÿ‰ıéà÷ÿÿH=(e  ¹   H‰Æó¦u}ÇCä  A9ı,÷ÿÿ‰ıé³÷ÿÿH=e  ¹   H‰Æó¦tH=ñd  ¹   H‰Æó¦u}ÇC<   A9ıìöÿÿ‰ıés÷ÿÿH=Ñd  ¹   H‰Æó¦tH=Âd  ¹   H‰Æó¦u}ÇC   A9ı¬öÿÿ‰ıé3÷ÿÿH=¦d  ¹   H‰Æó¦tH=—d  ¹   H‰Æó¦u}ÇC   A9ılöÿÿ‰ıéóöÿÿH={d  ¹   H‰Æó¦tH=od  ¹   H‰Æó¦u!€x HHu4}ƒK@A9ı%öÿÿ‰ıé¬öÿÿH=Cd  ¹   H‰Æó¦u-€x HHtÌL‹„$°   }H‰ÚèYÂÿÿA9ıåõÿÿ‰ıélöÿÿH=d  ¹   H‰Æó¦tH=öc  ¹   H‰Æó¦u]AsD‰\$8A9õ”  HcÆHÙc  I,ÄH‹} H‰ùèW  …ÀD‹\$8…Á   AkÇC    ÇC<    A9íòõÿÿ‰ï‰õé[õÿÿH=ñc  ¹   H‰Æó¦tH=ác  ¹
+   H‰Æó¦u*E…ÿ„¨   }Ç    ÇC@    A9ıôöÿÿD‰şéõÿÿH=ác  ¹   H‰Æó¦tH=Ñc  ¹
+   H‰Æó¦…š  E…ÿ„  }Ç   ÇC@    A9ı°éŸöÿÿHúb  H‰ùD‰\$8èu  …ÀD‹\$8…y  AkÇC   A9í%ÿÿÿéõÿÿL‰L$8èµ  L‹„$°   H‹HHH  è]  L‹L$8Hc  K‹|øèW  H‰Æè  H‹HI‰øH‰ò}è-  ÇC,   ÇC(    Ç    ÇC@    é’÷ÿÿèH  L‹„$°   H‹HH²G  ƒÅèí  Hfb  I‹>èî  H‰Æè  H‹HI‰øH‰òèÇ  ÇC,   ÇC(    é¸öÿÿL‰L$8èê  L‹„$°   H‹HHTG  è’  L‹L$8H6b  K‹|øèŒ  H‰Æè´  H‹HI‰øH‰ò}èb  ÇC,   ÇC(    Ç   ÇC@    éÇöÿÿH‹Œ$°   ƒÅèÄÿÿÇC,   ÇC(    é#öÿÿHea  H‰ùD‰\$8èÛ  …ÀD‹\$8tTHLa  H‰ùD‰\$8è¾  …ÀD‹\$8……õÿÿH‹Œ$°   èdÃÿÿ…ÀD‹\$8„’   AkÇC   A9íTıÿÿéAóÿÿè™¾ÿÿ‹k·ÀD‹\$8‰C…ítKèÒ  L‹„$°   H‹HH<F  èz  H&`  ‹kè{  H‰Çè£  H‹HA‰èH‰úèT  ‹CD‹\$8ƒø~+AkA9íÛüÿÿéÈòÿÿAkÇC   A9íÂüÿÿé¯òÿÿAkÇCµ  A9í©üÿÿé–òÿÿ WVSHƒì Aƒø‰Ë¶ıH‰Ö¶Ét8H‰òè0  ƒøÿu¸ÿÿÿÿHƒÄ [^_ÃH‰ò‰ùè  ‰Â‰ØƒúÿtàHƒÄ [^_Ã ‰ù¶ûëÁf„     UWVSHƒì8E‹P<‰ËH‰×L‰ÆE…Òt7Aƒx0¶Í¶ë„F  H‰úè~  ƒøÿ…  ¸ÿÿÿÿHƒÄ8[^_]Ã€    ·É2   (  fúÿ‡ˆ   ‘ $ÿÿúÿ  ‡8  f‰‡¢  º   1Àf‰{¢  f‰v¢  f‰ƒ2  Hd¢  HU¢  A¸   L‰L$(èe  HƒøÿL‹L$(„v  H5/¢  H…ÀH,0…¿   f‰ØHƒÄ8[^_]ÃD   (ÿÿ=ÿ  †ÿ    $ÿÿ=ÿ  †ş   E1À…Éf‰ê¡  fD‰ä¡  …qÿÿÿ1ÉH‰ú1Ûèx  ƒøÿ”Ã‰Ø÷Øéùşÿÿf„     H‰ú‰éèV  ƒøÿ„Øşÿÿ‰ØéxÿÿÿfD  ‰ÍH‰ú¶Ëè3  ƒøÿ„µşÿÿëÈ„     HƒÆH9õ„Cÿÿÿ¾H‰úè  ƒøÿuãé‰şÿÿL‰L$(è$  L‹L$(H‹HH‘C  M‰ÈèÌ  Hµ^  èĞ   H‰Ãèø   H‹HH‰Úè¬  N$   é;şÿÿf‰1  ‰ØéÔşÿÿfL‰L$(èÆ   L‹L$(H‹HH3C  M‰Èèn  H^  ë D  ‹N…Ét­L‰L$(è   ‹èH  H‰Ãè€   L‹L$(H‹HH^  M‰Èè(  èc   H‹HHĞB  I‰Øè  é_ÿÿÿÿ%‚²  ÿ%r²  ÿ%b²  ÿ%R²  ÿ%r²  ÿ%j²  ÿ%b²  ÿ%Z²  ÿ%b²  ÿ%b²  ÿ%Z²  ÿ%R²  ÿ%Z²  ÿ%R²  ÿ%J²  ÿ%B²  ÿ%:²  ÿ%2²  ÿ%*²  ÿ%"²  ÿ%²  ÿ%²  ÿ%
+²  ÿ%²  ÿ%ú±  ÿ%ò±  ÿ%ê±  ÿ%ê±  ÿ%ò±  ÿ%ê±  ÿ%â±  ÿ%Ú±  ÿ%Ò±  ÿ%Ê±  ÿ%Â±  ÿ%º±  ÿ%²±  ÿ%ª±  ÿ%¢±  ÿ%š±  ÿ%’±  ÿ%Š±  ÿ%‚±  Hƒì(1ÒèU   ÿ°  ÃÃÃÃVSHƒì(H‰ÓH‰Î¹   èê  H…Û„A  H‰s@H5–ÿÿÿHŸ  H‹˜¯  H…ÀÇCH  H‰³€   H5€ÿÿÿH‰KHH  ÇCÙ  ÇC    H‰³ˆ   H5iÿÿÿH‰SH‰KPHºıÿÿH  H‰³   H5UÿÿÿÇƒğ       H‰K8H‰S(H|  H‰³˜   H5¾ıÿÿHW  Çƒô   >  HÇ    H‰s H5  H‰K0H‰“  H‰sx„å   H‹à   H…Ò„Õ   ‹œ  …À…Ç   Hƒ=,   „ª  Hƒ=Š,   „Œ  Hƒ=„,   „n  Hƒ=~,   „P  Hƒ=x,   „2  Hƒ=r,   „  Hƒ=l,   „ö  Hƒ=f,   „Ø  H‹!,  H‰H‹,  H‰BH‹,  H‰BH‹,  H‰BH‹,  H‰B H‹,  H‰B(H‹,  H‰B0H‹,  H‰B81Éè¢  H‰ƒè   H|  1ÉH‰CXH÷+  H‰C`Hd›  H‰ChH  H‰CpH~[  H‰ƒ   Hp[  H‰ƒ(  H2›ÿÿH‰ƒ0  è–  ¸   HƒÄ([^Ãf.„     Hi  H‹b­  H‰p@H5GıÿÿH…ÀÇ@H  H‰HHHZ  Ç@Ù  H‰°€   H5=ıÿÿÇ@    H‰HPH‹ˆ@  H‰°   H5½ûÿÿÇ€ğ       Ç€ô   >  H‰
+HïüÿÿHıÿÿH‰p H5ı  HÇ     H‰ˆ   H‰ˆ˜   Hš  H*ûÿÿH‰pxH‰P8H  H‰H(Hğ  H‰P0H‰ˆ  „şÿÿH‹à   H‰ÃH…Ò…¶ıÿÿé†şÿÿ€    H‹B8H‰}*  éşÿÿH‹B0H‰e*  éúıÿÿH‹B(H‰M*  éÜıÿÿH‹B H‰5*  é¾ıÿÿH‹BH‰*  é ıÿÿH‹BH‰*  é‚ıÿÿH‹BH‰í)  édıÿÿH‹H‰Ö)  éGıÿÿL‹É™  ‹Ë™  H‹Ì™  é×   €    Hƒì8ƒútgr5ƒútƒúuº   HƒÄ8é­   º   HƒÄ8éŸ   ¸   HƒÄ8ÃD  1Òè‰   …ÀtëH‹V™  ‰D$,èµ   HÇB™  ÿÿÿÿ‹D$,ëÊ@ 1ÀHgÿÿÿM…À”ÀH‰:™  L‰#™  Ç!™     ‰™  è   HƒøÿH‰û˜  •À¶ÀHƒÄ8Ã„     é;ÿÿÿ¸   ÃÃÿ%êª  ÿ%úª  ÿ%r«  ÿ%r«  ÿ%j«  SHƒì H‰ËH‰ÑH~˜  è©úÿÿHr˜  H‰ÙHƒÄ [é   ÿ%’ª  ÿ%ª«  ÿ%š«  ATUWVSHìP  A‰ÌH‰Õè¸÷ÿÿHh9  H¸dos2unixÆD$O H‰D$Gè˜øÿÿH…ÀH‰ÃtbH‰ÁèHùÿÿH=ÿ  wH|$PA¸   H‰ÚH‰ùèÊ³ÿÿëTèS÷ÿÿH‹HHo8  LD$Gèş÷ÿÿH'9  è÷ÿÿH‰Ãè*÷ÿÿH‹PH‰Ùèş÷ÿÿH|$PHì8  A¸   H‰ùèt³ÿÿH39  1Éè¾öÿÿH&9  H‰úè¿öÿÿH9  è›öÿÿ¹L   èøÿÿH…ÀH‰Ã„×   H‹u Ç@    º/   Ç@8    H‰ñè–øÿÿH…À„”   HpHá8  H‰òèøÿÿ…ÀuhH¸mac2unixÇC   ÆD$O H‰D$GH´¨ÿÿI‰ùI‰ØH‰êD‰áH‰D$8Hœ¬ÿÿH‰D$0H@§ÿÿH‰D$(HD$GH‰D$ èŒãÿÿHÄP  [^_]A\ÃHo8  H‰òèŸ÷ÿÿ…Àu ëƒº\   H‰ñèì÷ÿÿH…À…VÿÿÿéUÿÿÿèéõÿÿL‹HH8  A¸	   º   èÎöÿÿè¹õÿÿ‹è‚÷ÿÿH‰ÃèºõÿÿH‹HHù7  I‰Øègöÿÿè’õÿÿ‹ éoÿÿÿUH‰å]é¦ÿÿÿÿÿÿÿÿÿÿPj@            ÿÿÿÿÿÿÿÿ                                                                                                                                                                                                                                                                                                                                                                                                                                                            	   
+                                                                      !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~      .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .    ÿÿÿ¡ÿÿÿ¢ÿÿÿ£ÿÿÿ¤ÿÿÿ¥ÿÿÿ¦ÿÿÿ§ÿÿÿ¨ÿÿÿ©ÿÿÿªÿÿÿ«ÿÿÿ¬ÿÿÿ­ÿÿÿ®ÿÿÿ¯ÿÿÿ°ÿÿÿ±ÿÿÿ²ÿÿÿ³ÿÿÿ´ÿÿÿµÿÿÿ¶ÿÿÿ·ÿÿÿ¸ÿÿÿ¹ÿÿÿºÿÿÿ»ÿÿÿ¼ÿÿÿ½ÿÿÿ¾ÿÿÿ¿ÿÿÿÀÿÿÿÁÿÿÿÂÿÿÿÃÿÿÿÄÿÿÿÅÿÿÿÆÿÿÿÇÿÿÿÈÿÿÿÉÿÿÿÊÿÿÿËÿÿÿÌÿÿÿÍÿÿÿÎÿÿÿÏÿÿÿĞÿÿÿÑÿÿÿÒÿÿÿÓÿÿÿÔÿÿÿÕÿÿÿÖÿÿÿ×ÿÿÿØÿÿÿÙÿÿÿÚÿÿÿÛÿÿÿÜÿÿÿİÿÿÿŞÿÿÿßÿÿÿàÿÿÿáÿÿÿâÿÿÿãÿÿÿäÿÿÿåÿÿÿæÿÿÿçÿÿÿèÿÿÿéÿÿÿêÿÿÿëÿÿÿìÿÿÿíÿÿÿîÿÿÿïÿÿÿğÿÿÿñÿÿÿòÿÿÿóÿÿÿôÿÿÿõÿÿÿöÿÿÿ÷ÿÿÿøÿÿÿùÿÿÿúÿÿÿûÿÿÿüÿÿÿıÿÿÿşÿÿÿÿÿÿÿ                            	   
+                                                                      !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~      ÇÿÿÿüÿÿÿéÿÿÿâÿÿÿäÿÿÿàÿÿÿåÿÿÿçÿÿÿêÿÿÿëÿÿÿèÿÿÿïÿÿÿîÿÿÿìÿÿÿÄÿÿÿÅÿÿÿÉÿÿÿæÿÿÿÆÿÿÿôÿÿÿöÿÿÿòÿÿÿûÿÿÿùÿÿÿÿÿÿÿÖÿÿÿÜÿÿÿøÿÿÿ£ÿÿÿØÿÿÿ.   .   áÿÿÿíÿÿÿóÿÿÿúÿÿÿñÿÿÿÑÿÿÿªÿÿÿºÿÿÿ¿ÿÿÿ.   ¬ÿÿÿ½ÿÿÿ¼ÿÿÿ¡ÿÿÿ«ÿÿÿ¤ÿÿÿ.   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   ßÿÿÿ.   .   .   .   µÿÿÿ.   .   .   .   .   .   .   .   .   .   ±ÿÿÿ.   .   .   .   ÷ÿÿÿ.   °ÿÿÿ.   ·ÿÿÿ.   .   ²ÿÿÿ.    ÿÿÿ                            	   
+                                                                      !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~      ÇÿÿÿüÿÿÿéÿÿÿâÿÿÿÂÿÿÿàÿÿÿ¶ÿÿÿçÿÿÿêÿÿÿëÿÿÿèÿÿÿïÿÿÿîÿÿÿ.   Àÿÿÿ§ÿÿÿÉÿÿÿÈÿÿÿÊÿÿÿôÿÿÿËÿÿÿÏÿÿÿûÿÿÿùÿÿÿ¤ÿÿÿÔÿÿÿÜÿÿÿ¢ÿÿÿ£ÿÿÿÙÿÿÿÛÿÿÿ.   ¦ÿÿÿ´ÿÿÿóÿÿÿúÿÿÿ¨ÿÿÿ¸ÿÿÿ³ÿÿÿ¯ÿÿÿÎÿÿÿ.   ¬ÿÿÿ½ÿÿÿ¼ÿÿÿ¾ÿÿÿ«ÿÿÿ»ÿÿÿ.   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   ßÿÿÿ.   .   .   .   µÿÿÿ.   .   .   .   .   .   .   .   .   .   ±ÿÿÿ.   .   .   .   ÷ÿÿÿ.   °ÿÿÿ.   ·ÿÿÿ.   .   ²ÿÿÿ.    ÿÿÿ                            	   
+                                                                      !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~      ÇÿÿÿüÿÿÿéÿÿÿâÿÿÿãÿÿÿàÿÿÿÁÿÿÿçÿÿÿêÿÿÿÊÿÿÿèÿÿÿÍÿÿÿÔÿÿÿìÿÿÿÃÿÿÿÂÿÿÿÉÿÿÿÀÿÿÿÈÿÿÿôÿÿÿõÿÿÿòÿÿÿÚÿÿÿùÿÿÿÌÿÿÿÕÿÿÿÜÿÿÿ¢ÿÿÿ£ÿÿÿÙÿÿÿ.   ÓÿÿÿáÿÿÿíÿÿÿóÿÿÿúÿÿÿñÿÿÿÑÿÿÿªÿÿÿºÿÿÿ¿ÿÿÿÒÿÿÿ¬ÿÿÿ½ÿÿÿ¼ÿÿÿ¡ÿÿÿ«ÿÿÿ»ÿÿÿ.   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   ßÿÿÿ.   .   .   .   µÿÿÿ.   .   .   .   .   .   .   .   .   .   ±ÿÿÿ.   .   .   .   ÷ÿÿÿ.   °ÿÿÿ.   ·ÿÿÿ.   .   ²ÿÿÿ.    ÿÿÿ                            	   
+                                                                      !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~      ÇÿÿÿüÿÿÿéÿÿÿâÿÿÿäÿÿÿàÿÿÿåÿÿÿçÿÿÿêÿÿÿëÿÿÿèÿÿÿïÿÿÿîÿÿÿìÿÿÿÄÿÿÿÅÿÿÿÉÿÿÿæÿÿÿÆÿÿÿôÿÿÿöÿÿÿòÿÿÿûÿÿÿùÿÿÿÿÿÿÿÖÿÿÿÜÿÿÿøÿÿÿ£ÿÿÿØÿÿÿ×ÿÿÿ.   áÿÿÿíÿÿÿóÿÿÿúÿÿÿñÿÿÿÑÿÿÿªÿÿÿºÿÿÿ¿ÿÿÿ®ÿÿÿ¬ÿÿÿ½ÿÿÿ¼ÿÿÿ¡ÿÿÿ«ÿÿÿ»ÿÿÿ.   .   .   .   .   ÁÿÿÿÂÿÿÿÀÿÿÿ©ÿÿÿ.   .   .   .   ¢ÿÿÿ¥ÿÿÿ.   .   .   .   .   .   .   ãÿÿÿÃÿÿÿ.   .   .   .   .   .   .   ¤ÿÿÿğÿÿÿĞÿÿÿÊÿÿÿËÿÿÿÈÿÿÿ.   ÍÿÿÿÎÿÿÿÏÿÿÿ.   .   .   .   ¦ÿÿÿÌÿÿÿ.   ÓÿÿÿßÿÿÿÔÿÿÿÒÿÿÿõÿÿÿÕÿÿÿµÿÿÿşÿÿÿŞÿÿÿÚÿÿÿÛÿÿÿÙÿÿÿıÿÿÿİÿÿÿ¯ÿÿÿ´ÿÿÿ­ÿÿÿ±ÿÿÿ.   ¾ÿÿÿ¶ÿÿÿ§ÿÿÿ÷ÿÿÿ¸ÿÿÿ°ÿÿÿ¨ÿÿÿ·ÿÿÿ¹ÿÿÿ³ÿÿÿ²ÿÿÿ.    ÿÿÿ                            	   
+                                                                      !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~      ÇÿÿÿüÿÿÿéÿÿÿâÿÿÿäÿÿÿàÿÿÿåÿÿÿçÿÿÿêÿÿÿëÿÿÿèÿÿÿïÿÿÿîÿÿÿìÿÿÿÄÿÿÿÅÿÿÿÉÿÿÿæÿÿÿÆÿÿÿôÿÿÿöÿÿÿòÿÿÿûÿÿÿùÿÿÿÿÿÿÿÖÿÿÿÜÿÿÿ¢ÿÿÿ£ÿÿÿ¥ÿÿÿ.   .   áÿÿÿíÿÿÿóÿÿÿúÿÿÿñÿÿÿÑÿÿÿªÿÿÿºÿÿÿ¿ÿÿÿ.   ¬ÿÿÿ½ÿÿÿ¼ÿÿÿ¡ÿÿÿ«ÿÿÿ»ÿÿÿ.   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   ßÿÿÿ.   .   .   .   µÿÿÿ.   .   .   .   .   .   .   .   .   .   ±ÿÿÿ.   .   .   .   ÷ÿÿÿ.   °ÿÿÿ.   ·ÿÿÿ.   .   ²ÿÿÿ.    ÿÿÿ                            	   
+                                                                      !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  	   
+                                                                      !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~      €ÿÿÿÿÿÿ‚ÿÿÿƒÿÿÿ„ÿÿÿ…ÿÿÿ†ÿÿÿ‡ÿÿÿˆÿÿÿ‰ÿÿÿŠÿÿÿ‹ÿÿÿŒÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ‘ÿÿÿ’ÿÿÿ“ÿÿÿ”ÿÿÿ•ÿÿÿ–ÿÿÿ—ÿÿÿ˜ÿÿÿ™ÿÿÿšÿÿÿ›ÿÿÿœÿÿÿÿÿÿÿÿÿŸÿÿÿ ÿÿÿ¡ÿÿÿ¢ÿÿÿ£ÿÿÿ¤ÿÿÿ¥ÿÿÿ¦ÿÿÿ§ÿÿÿ¨ÿÿÿ©ÿÿÿªÿÿÿ«ÿÿÿ¬ÿÿÿ­ÿÿÿ®ÿÿÿ¯ÿÿÿ°ÿÿÿ±ÿÿÿ²ÿÿÿ³ÿÿÿ´ÿÿÿµÿÿÿ¶ÿÿÿ·ÿÿÿ¸ÿÿÿ¹ÿÿÿºÿÿÿ»ÿÿÿ¼ÿÿÿ½ÿÿÿ¾ÿÿÿ¿ÿÿÿÀÿÿÿÁÿÿÿÂÿÿÿÃÿÿÿÄÿÿÿÅÿÿÿÆÿÿÿÇÿÿÿÈÿÿÿÉÿÿÿÊÿÿÿËÿÿÿÌÿÿÿÍÿÿÿÎÿÿÿÏÿÿÿĞÿÿÿÑÿÿÿÒÿÿÿÓÿÿÿÔÿÿÿÕÿÿÿÖÿÿÿ×ÿÿÿØÿÿÿÙÿÿÿÚÿÿÿÛÿÿÿÜÿÿÿİÿÿÿŞÿÿÿßÿÿÿàÿÿÿáÿÿÿâÿÿÿãÿÿÿäÿÿÿåÿÿÿæÿÿÿçÿÿÿèÿÿÿéÿÿÿêÿÿÿëÿÿÿìÿÿÿíÿÿÿîÿÿÿïÿÿÿğÿÿÿñÿÿÿòÿÿÿóÿÿÿôÿÿÿõÿÿÿöÿÿÿ÷ÿÿÿøÿÿÿùÿÿÿúÿÿÿûÿÿÿüÿÿÿıÿÿÿşÿÿÿÿÿÿÿ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               msys-gcj-16.dll _Jv_RegisterClasses             Copyright (C) 2009-%d Erwin Waterlander
+Copyright (C) 1998      Christian Wurll (Version 3.1)
+Copyright (C) 1998      Bernd Johannes Wuebben (Version 3.0)
+Copyright (C) 1994-1995 Benjamin Lin
+All rights reserved.
+
+ %s:      Binary symbol 0x00%02X found at line %u
+        Converted %u out of %u line breaks.
+ using code page %d.
+       Binary symbol 0x%02X found at line %u
+ DOS2UNIX_LOCALEDIR /usr/share/locale     error: Value of environment variable DOS2UNIX_LOCALEDIR is too long.
+  dos2unix dos2unix:  %s
+ mac2unix mac2unix.exe            %s: %s:  %s
+ %s:        wrong flag '%c' for option -i or --info
+    \yÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿlyÿÿLyÿÿ<yÿÿ,yÿÿlyÿÿlyÿÿlyÿÿyÿÿlyÿÿlyÿÿlyÿÿlyÿÿyÿÿlyÿÿlyÿÿüxÿÿlyÿÿlyÿÿlyÿÿìxÿÿ¼xÿÿ    Text %s has been truncated from %d to %d characters in %s to prevent a buffer overflow.
+ d2u_strncpy()  Failed to write to temporary output file %s:    Failed to close input file %s:  Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice in the documentation and/or other materials provided with
+   the distribution.
+
+       THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY
+EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ dos2unix mac2unix     Usage: %s [options] [file ...] [-n infile outfile ...]
+  --allow-chown         allow file ownership change
+      -ascii                convert only line breaks (default)
+       -iso                  conversion between DOS and ISO-8859-1 character set
+        -1252               use Windows code page 1252 (Western European)
+      -437                use DOS code page 437 (US) (default)
+       -850                use DOS code page 850 (Western European)
+           -860                use DOS code page 860 (Portuguese)
+         -863                use DOS code page 863 (French Canadian)
+    -865                use DOS code page 865 (Nordic)
+   -7                    convert 8 bit characters to 7 bit space
+  -b, --keep-bom        keep Byte Order Mark
+     -b, --keep-bom        keep Byte Order Mark (default)
+   -c, --convmode        conversion mode
+   convmode            ascii, 7bit, iso, mac, default to ascii
+   -f, --force           force conversion of binary files
+         -h, --help            display this help text
+   -i, --info[=FLAGS]    display file information
+   file ...            files to analyze
+         -k, --keepdate        keep output file date
+    -L, --license         display software license
+         -l, --newline         add additional newline
+   -m, --add-bom         add Byte Order Mark (default UTF-8)
+      -n, --newfile         write to new file
+   infile              original file in new-file mode
+   outfile             output file in new-file mode
+      --no-allow-chown      don't allow file ownership change (default)
+      -o, --oldfile         write to old file (default)
+   file ...            files to convert in old-file mode
+     -q, --quiet           quiet mode, suppress all warnings
+        -r, --remove-bom      remove Byte Order Mark (default)
+         -r, --remove-bom      remove Byte Order Mark
+   -s, --safe            skip binary files (default)
+      -u,  --keep-utf16     keep UTF-16 encoding
+     -ul, --assume-utf16le assume that the input format is UTF-16LE
+         -ub, --assume-utf16be assume that the input format is UTF-16BE
+         -v,  --verbose        verbose operation
+        -F, --follow-symlink  follow symbolic links and convert the targets
+    -R, --replace-symlink replace symbolic links with converted files
+                         (original target files remain unchanged)
+    -S, --skip-symlink    keep symbolic links and targets unchanged (default)
+      -V, --version         display version number
+ 7.4.0 %s %s (%s)
+ 2017-10-10 MSYS version.
+ With Unicode UTF-16 support.
+        With native language support.
+  With support to preserve the user and group ownership of files.
+ LOCALEDIR: %s
+ http://waterlan.home.xs4all.nl/dos2unix.html
+ rb wb . / /d2utmpXXXXXX %s%s ÿş %s UTF-16LE Writing %s BOM.
+ şÿ UTF-16BE „1•3 GB18030 ï»¿ UTF-8 Input file %s has %s BOM.
+   UTF-16LE   UTF-16BE   UTF-8      GB18030    no_bom   Skipping binary file %s
+ stdin  code page %d is not supported.
+ Skipping UTF-16 file %s, the size of wchar_t is %d bytes.
+      Skipping UTF-16 file %s, an UTF-16 conversion error occurred on line %u.
+       Skipping %s, not a regular file.
+       Skipping %s, output file %s is a symbolic link.
+ Skipping symbolic link %s.
+    Skipping symbolic link %s, target is not a regular file.
+       Skipping %s, target of symbolic link %s is not a regular file.
+ converting file %s to file %s in Unix format...
+        converting file %s to Unix format...
+   converting file %s to file %s in Mac format...
+ converting file %s to Mac format...
+    converting file %s to file %s in DOS format...
+ converting file %s to DOS format...
+    converting %s file %s to %s file %s in Unix format...
+  converting %s file %s to %s Unix format...
+     converting %s file %s to %s file %s in Mac format...
+   converting %s file %s to %s Mac format...
+      converting %s file %s to %s file %s in DOS format...
+   converting %s file %s to %s DOS format...
+      problems converting file %s to file %s
+ problems converting file %s
+      DOS     UNIX      MAC   BOM        TXTBIN    FILE   %6u   binary   text       can not read from input file %s:        can not read from input file: %s
+ Assuming UTF-16LE encoding.
+ Assuming UTF-16BE encoding.
+     Failed to open temporary output file: %s
+ r w   Failed to change the permissions of temporary output file %s:   The user and/or group ownership of file %s is not preserved.
+   Failed to change the owner and group of temporary output file %s:       problems resolving symbolic link '%s'
+            output file remains in '%s'
+  problems renaming '%s' to '%s':           which is the target of symbolic link '%s'
+    can not write to output file: %s
+ %s: %s:  %s
+  -- -h --help -b --keep-bom -k --keepdate -f --force --allow-chown --no-allow-chown -s --safe -q --quiet -v --verbose -l --newline -m --add-bom -r --remove-bom -S --skip-symlink -F --follow-symlink -R --replace-symlink -V --version -L --license -ascii -7 -iso active code page: %d
+ -437 -850 -860 -863 -865 -1252 -u --keep-utf16 -ul --assume-utf16le -ub --assume-utf16be --info --info= -i -c --convmode ascii 7bit iso mac    invalid %s conversion mode specified
+   option '%s' requires an argument
+ -o --oldfile  target of file %s not specified in new-file mode
+ -n --newfile  error: Invalid surrogate pair. Missing low surrogate.
+  error: Invalid surrogate pair. Missing high surrogate.
+ %s:             GCC: (GNU) 6.3.0                GCC: (GNU) 6.4.0                GCC: (GNU) 6.4.0                GCC: (GNU) 6.4.0                GCC: (GNU) 6.4.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.3.0                GCC: (GNU) 6.4.0                GCC: (GNU) 6.4.0                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  Ğ  ¤  RSDSÿÊ ›D,“H6x*P‚                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  D   ğ  P  V  ğ  `  É  ğ  Ğ  Ö  ğ  à    $ğ     !  ,ğ  0  R  <ğ  `  $  Pğ  0    `ğ    “  Œğ       ğ    P  œğ  P  º  ¨ğ  À  w  ¸ğ  €  …  Äğ    •  Èğ     Ó  Ìğ  à  f  Ôğ  p  ×  äğ  à  *  ôğ  0  q  üğ  €  ø#  ñ   $  õ$  ñ   %  %  ñ  %  %   ñ   %  ,%  $ñ  0%  —%  (ñ   %  T&  4ñ  `&  7'  Dñ  @'  :)  Tñ  @)  Ù*  dñ  à*  ¼+  pñ  À+  ˜,  |ñ   ,  ä-  „ñ  ğ-  ó.  ñ   /  3   ñ   3  (4  ´ñ  04  u8  Àñ  €8  ä9  Ôñ  ğ9  :  ìñ  :  ‘:  ğñ   :  Æ;  üñ  Ğ;  f=  ò  p=  ¼F   ò  ÀF  ÀG  8ò  ÀG  AH  Hò  PH  ÒH  Tò  àH  ,I  `ò  0I  ”J  lò   J  dL  „ò  pL  7M  ˜ò  @M  \  ¨ò   \  ÷\  Àò   ]  •_  Ìò  0b  Bb  Üò  Pb  Qb  äò  `b  ab  èò  pb  qb  ìò  €b  b  ğò  b  of  ôò  pf  ‰f   ó  f  Hg  ó  Pg  Ug  ó  `g  fg  ó  pg  qg  ó  Ğg  ûg  ó   h  Ej  xğ  Pj  Zj   ó                                                                                                                                                                                                                   B  P2P  P 20
+ 
+20`pPÀ r
+0	`pPÀĞà
+ 
+20`pPÀ	 ‚0`
+p	PÀĞàğ   Š 0`pPÀ      R0`p b0`  
+ 
+R0`pPÀ 20`p          0`pP
+ 
+ 0`p   20 `p B0`   b0`            20`p B0`pP    0`pP B0`pP   20`p ²0`p B   B0`   B0`pP    0`pPÀĞ b0`   2
+0	`pPÀĞà	 ‚0`
+p	PÀĞàğ      20`p
+ 
+20`pPÀ B0`pPÀĞ  
+ - 0`
+p	PÀĞàğ
+ 
+R0`pPÀ 20`p 20`p 20`p	 ‚0`
+p	PÀĞàğ    0`pPÀ   ‚0`pP  	 ‚0`
+p	PÀĞàğ   20`p b0`pP   B               B0`      b            20P                                                                                                                                                                                                                        P         ¨  x         t 8 ø         Œ ¸                     Ğ     ì                        ,     <     H     X     d     p     €     Œ     ˜     ´     ¼     Ä     Ø     è     ğ     ü                    $     0     8     @     H     T     `     h     t     €     ”     ¤     ¸     Ä     Ğ     Ü     ä     ô                     $     0     <     D     P     \     d             p     „             Ğ     ì                        ,     <     H     X     d     p     €     Œ     ˜     ´     ¼     Ä     Ø     è     ğ     ü                    $     0     8     @     H     T     `     h     t     €     ”     ¤     ¸     Ä     Ğ     Ü     ä     ô                     $     0     <     D     P     \     d             p     „              libintl_bindtextdomain    ! libintl_gettext   1 libintl_setlocale 2 libintl_textdomain     __cxa_atexit   __errno   " __getreent    , __main    X _dll_crt0 ] _impure_ptr   c _setmode  ä calloc    å canonicalize_file_name    chmod chown Tcygwin_internal   fdll_dllcrt0    exit  ¸fclose    Âfdopen    Şfgetc èfileno    fopen 
+fprintf   fputc fputs free  ?fwrite    Zgetenv    Zlstat _malloc    €mkstemp   ›msys_detach_dll   ¯nl_langinfo   Ìposix_memalign    }realloc   ’rename    8sprintf   @stat  Fstrcasecmp    Jstrchr    Qstrdup    Rstrerror  [strlen    astrncpy   hstrrchr   Îumask Ñungetc    Óunlink    Ûutime *wcstombs  vGetModuleHandleA  ±GetProcAddress            msys-intl-8.dll                                                msys-2.0.dll    ( ( KERNEL32.dll                                                                                                                            €                  0  €                   H   X            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!--The ID below indicates application support for Windows Vista -->
+      <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}"/>
+      <!--The ID below indicates application support for Windows 7 -->
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>
+      <!--The ID below indicates application support for Windows 8 -->
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>
+      <!--The ID below indicates application support for Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/> 
+      <!--The ID below indicates application support for Windows 10 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/> 
+    </application>
+  </compatibility>
+</assembly>
+                                                                                                                                                                                                                                                                                                Œ                          6   X          F   p          S   À          `   ˆ          l   Ø          x   ø          …   x          “              ¦             ¼   (          Ñ   €          ß   è          ê   °          ÷   @            p            `          #  à          /  h          >  Ğ          J  ˆ          V  ˜          h  h          w  ğ          „               (           ª             Â            Ø  €          ä             ö  À            H            ¸          3  P          @  p          M            Z  (          s  `          …  H            0                       ©            ·            Å            â            ï              ˜            8          %  Ğ          3  ¨          B  8          O  ¨          e  x          ‚  ¨            P             X          ­  ¸          ¹  @          Ç             Ó  È          ß  t      ò  __lib64_libkernel32_a_iname _head_msys_intl_8_dll __imp__dll_crt0 __imp_calloc __imp_fileno __imp_umask __imp_fputc __imp_getenv __imp_strncpy _head_msys_2_0_dll __imp_cygwin_internal __imp_posix_memalign __imp_strrchr __imp_free __imp_fdopen __imp___errno __nm__impure_ptr __imp_strdup __imp_fputs __imp__setmode __IAT_end__ __imp_chown __imp_dll_dllcrt0 __imp_strerror __imp_fwrite __imp_utime _head_lib64_libkernel32_a __imp_libintl_setlocale __imp_msys_detach_dll __imp_chmod __imp_nl_langinfo __imp_GetProcAddress __imp___getreent __imp_GetModuleHandleA __imp___main __imp_strlen __imp_malloc __imp_libintl_textdomain __imp__impure_ptr __imp_stat __imp_realloc __imp_exit __IAT_start__ __imp_mkstemp __imp_libintl_bindtextdomain __imp_ungetc __imp_libintl_gettext __imp_unlink __imp___cxa_atexit __imp_fprintf __imp_wcstombs __imp_rename msys_intl_8_dll_iname __imp_canonicalize_file_name __imp_fclose __imp_strcasecmp __imp_strchr __imp_fgetc __imp_sprintf __imp_lstat __imp_fopen msys_2_0_dll_iname                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   INDX( 	 Aı)€            (   Ø  è       i                     3    p `     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ       Ó              E n t r y P o i n t . j a v a 3    p Z     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ       Ó              E N T R Y P ~ 1 . J A V       7    € p     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ       ÷              E x e c u t i o n C o m p l e t e r . j a v a 4    € n     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ       ¯              E x e c u t  o n L i s t e n e r . j a v a   4    p Z     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ       ¯              E X E C U T ~ 1 . J A V       7    p Z     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ       ÷              E X E C U T ~ 2 . J A V t r a 6    € l     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ                     P r o c e s s B o o t s t r a p . j a v a     5    € l     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ       \              P r o c e s s C o m p l e t e r . j a v a    5    p Z     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ       \              P R O C E S ~ 1 . J A V       6    p Z     2    æ]†TôaÓæ]†TôaÓæ]†TôaÓæ]†TôaÓ                     P R O C E S ~ 2 . J A V                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               /* Copyright (c) 2004-2007 Sara Golemon <sarag@libssh2.org>
+ * Copyright (c) 2005,2006 Mikhail Gusarov <dottedmag@dottedmag.net>
+ * Copyright (c) 2006-2007 The Written Word, Inc.
+ * Copyright (c) 2007 Eli Fant <elifantu@mail.ru>
+ * Copyright (c) 2009-2014 Daniel Stenberg
+ * Copyright (C) 2008, 2009 Simon Josefsson
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms,
+ * with or without modification, are permitted provided
+ * that the following conditions are met:
+ *
+ *   Redistributions of source code must retain the above
+ *   copyright notice, this list of conditions and the
+ *   following disclaimer.
+ *
+ *   Redistributions in binary form must reproduce the above
+ *   copyright notice, this list of conditions and the following
+ *   disclaimer in the documentation and/or other materials
+ *   provided with the distribution.
+ *
+ *   Neither the name of the copyright holder nor the names
+ *   of any other contributors may be used to endorse or
+ *   promote products derived from this software without
+ *   specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+ * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+ * USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
+ */
+
+                                                                                                                                                 

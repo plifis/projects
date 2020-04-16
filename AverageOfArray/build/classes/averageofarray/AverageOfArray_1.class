@@ -1,0 +1,18 @@
+ to be legal, we'll set the isInnerCircle
+                // boolean based based off whichever number the coordinates are closer to.
+                int innerNumberRadius = (int) (mCircleRadius * mInnerNumbersRadiusMultiplier);
+                int distanceToInnerNumber = (int) Math.abs(hypotenuse - innerNumberRadius);
+                int outerNumberRadius = (int) (mCircleRadius * mOuterNumbersRadiusMultiplier);
+                int distanceToOuterNumber = (int) Math.abs(hypotenuse - outerNumberRadius);
+
+                isInnerCircle[0] = (distanceToInnerNumber <= distanceToOuterNumber);
+            } else {
+                // Otherwise, if we're close enough to either number (with the space between the
+                // two allotted equally), set the isInnerCircle boolean as the closer one.
+                // appropriately, but otherwise return -1.
+                int minAllowedHypotenuseForInnerNumber =
+                        (int) (mCircleRadius * mInnerNumbersRadiusMultiplier) - mSelectionRadius;
+                int maxAllowedHypotenuseForOuterNumber =
+                        (int) (mCircleRadius * mOuterNumbersRadiusMultiplier) + mSelectionRadius;
+                int halfwayHypotenusePoint = (int) (mCircleRadius *
+                        ((mOu

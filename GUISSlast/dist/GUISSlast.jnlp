@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding = "utf-8"?>
+<jnlp spec="1.0+" codebase=
+"$$codebase" href="GUISSlast.jnlp">
+<information>
+<title> GUISSlast</title>
+<description> </description>
+</information>
+<resources>
+<java version="1.6.0+"/>
+<jar href= "GUISSlast.jar"/>
+</resources>
+<application-desc/>
+</jnlp>

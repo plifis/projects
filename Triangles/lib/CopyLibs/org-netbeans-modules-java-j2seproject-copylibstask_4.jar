@@ -1,0 +1,158 @@
+li>
+<li><a href="org/gradle/language/base/artifact/package-frame.html" target="packageFrame">org.gradle.language.base.artifact</a></li>
+<li><a href="org/gradle/language/base/plugins/package-frame.html" target="packageFrame">org.gradle.language.base.plugins</a></li>
+<li><a href="org/gradle/language/base/sources/package-frame.html" target="packageFrame">org.gradle.language.base.sources</a></li>
+<li><a href="org/gradle/language/c/package-frame.html" target="packageFrame">org.gradle.language.c</a></li>
+<li><a href="org/gradle/language/c/plugins/package-frame.html" target="packageFrame">org.gradle.language.c.plugins</a></li>
+<li><a href="org/gradle/language/c/tasks/package-frame.html" target="packageFrame">org.gradle.language.c.tasks</a></li>
+<li><a href="org/gradle/language/coffeescript/package-frame.html" target="packageFrame">org.gradle.language.coffeescript</a></li>
+<li><a href="org/gradle/language/cpp/package-frame.html" target="packageFrame">org.gradle.language.cpp</a></li>
+<li><a href="org/gradle/language/cpp/plugins/package-frame.html" target="packageFrame">org.gradle.language.cpp.plugins</a></li>
+<li><a href="org/gradle/language/cpp/tasks/package-frame.html" target="packageFrame">org.gradle.language.cpp.tasks</a></li>
+<li><a href="org/gradle/language/java/package-frame.html" target="packageFrame">org.gradle.language.java</a></li>
+<li><a href="org/gradle/language/java/artifact/package-frame.html" target="packageFrame">org.gradle.language.java.artifact</a></li>
+<li><a href="org/gradle/language/java/plugins/package-frame.html" target="packageFrame">org.gradle.language.java.plugins</a></li>
+<li><a href="org/gradle/language/java/tasks/package-frame.html" target="packageFrame">org.gradle.language.java.tasks</a></li>
+<li><a href="org/gradle/language/javascript/package-frame.html" target="packageFrame">org.gradle.language.javascript</a></li>
+<li><a href="org/gradle/language/jvm/package-frame.html" target="packageFrame">org.gradle.language.jvm</a></li>
+<li><a href="org/gradle/language/jvm/plugins/package-frame.html" target="packageFrame">org.gradle.language.jvm.plugins</a></li>
+<li><a href="org/gradle/language/jvm/tasks/package-frame.html" target="packageFrame">org.gradle.language.jvm.tasks</a></li>
+<li><a href="org/gradle/language/nativeplatform/package-frame.html" target="packageFrame">org.gradle.language.nativeplatform</a></li>
+<li><a href="org/gradle/language/nativeplatform/tasks/package-frame.html" target="packageFrame">org.gradle.language.nativeplatform.tasks</a></li>
+<li><a href="org/gradle/language/objectivec/package-frame.html" target="packageFrame">org.gradle.language.objectivec</a></li>
+<li><a href="org/gradle/language/objectivec/plugins/package-frame.html" target="packageFrame">org.gradle.language.objectivec.plugins</a></li>
+<li><a href="org/gradle/language/objectivec/tasks/package-frame.html" target="packageFrame">org.gradle.language.objectivec.tasks</a></li>
+<li><a href="org/gradle/language/objectivecpp/package-frame.html" target="packageFrame">org.gradle.language.objectivecpp</a></li>
+<li><a href="org/gradle/language/objectivecpp/plugins/package-frame.html" target="packageFrame">org.gradle.language.objectivecpp.plugins</a></li>
+<li><a href="org/gradle/language/objectivecpp/tasks/package-frame.html" target="packageFrame">org.gradle.language.objectivecpp.tasks</a></li>
+<li><a href="org/gradle/language/rc/package-frame.html" target="packageFrame">org.gradle.language.rc</a></li>
+<li><a href="org/gradle/language/rc/plugins/package-frame.html" target="packageFrame">org.gradle.language.rc.plugins</a></li>
+<li><a href="org/gradle/language/rc/tasks/package-frame.html" target="packageFrame">org.gradle.language.rc.tasks</a></li>
+<li><a href="org/gradle/language/routes/package-frame.html" target="packageFrame">org.gradle.language.routes</a></li>
+<li><a href="org/gradle/language/scala/package-frame.html" target="packageFrame">org.gradle.language.scala</a></li>
+<li><a href="org/gradle/language/scala/plugins/package-frame.html" target="packageFrame">org.gradle.language.scala.plugins</a></li>
+<li><a href="org/gradle/language/scala/tasks/package-frame.html" target="packageFrame">org.gradle.language.scala.tasks</a></li>
+<li><a href="org/gradle/language/scala/toolchain/package-frame.html" target="packageFrame">org.gradle.language.scala.toolchain</a></li>
+<li><a href="org/gradle/language/swift/plugins/package-frame.html" target="packageFrame">org.gradle.language.swift.plugins</a></li>
+<li><a href="org/gradle/language/swift/tasks/package-frame.html" target="packageFrame">org.gradle.language.swift.tasks</a></li>
+<li><a href="org/gradle/language/twirl/package-frame.html" target="packageFrame">org.gradle.language.twirl</a></li>
+<li><a href="org/gradle/maven/package-frame.html" target="packageFrame">org.gradle.maven</a></li>
+<li><a href="org/gradle/model/package-frame.html" target="packageFrame">org.gradle.model</a></li>
+<li><a href="org/gradle/nativeplatform/package-frame.html" target="packageFrame">org.gradle.nativeplatform</a></li>
+<li><a href="org/gradle/nativeplatform/platform/package-frame.html" target="packageFrame">org.gradle.nativeplatform.platform</a></li>
+<li><a href="org/gradle/nativeplatform/plugins/package-frame.html" target="packageFrame">org.gradle.nativeplatform.plugins</a></li>
+<li><a href="org/gradle/nativeplatform/tasks/package-frame.html" target="packageFrame">org.gradle.nativeplatform.tasks</a></li>
+<li><a href="org/gradle/nativeplatform/test/package-frame.html" target="packageFrame">org.gradle.nativeplatform.test</a></li>
+<li><a href="org/gradle/nativeplatform/test/cunit/package-frame.html" target="packageFrame">org.gradle.nativeplatform.test.cunit</a></li>
+<li><a href="org/gradle/nativeplatform/test/cunit/plugins/package-frame.html" target="packageFrame">org.gradle.nativeplatform.test.cunit.plugins</a></li>
+<li><a href="org/gradle/nativeplatform/test/cunit/tasks/package-frame.html" target="packageFrame">org.gradle.nativeplatform.test.cunit.tasks</a></li>
+<li><a href="org/gradle/nativeplatform/test/googletest/package-frame.html" target="packageFrame">org.gradle.nativeplatform.test.googletest</a></li>
+<li><a href="org/gradle/nativeplatform/test/googletest/plugins/package-frame.html" target="packageFrame">org.gradle.nativeplatform.test.googletest.plugins</a></li>
+<li><a href="org/gradle/nativeplatform/test/plugins/package-frame.html" target="packageFrame">org.gradle.nativeplatform.test.plugins</a></li>
+<li><a href="org/gradle/nativeplatform/test/tasks/package-frame.html" target="packageFrame">org.gradle.nativeplatform.test.tasks</a></li>
+<li><a href="org/gradle/nativeplatform/toolchain/package-frame.html" target="packageFrame">org.gradle.nativeplatform.toolchain</a></li>
+<li><a href="org/gradle/nativeplatform/toolchain/plugins/package-frame.html" target="packageFrame">org.gradle.nativeplatform.toolchain.plugins</a></li>
+<li><a href="org/gradle/normalization/package-frame.html" target="packageFrame">org.gradle.normalization</a></li>
+<li><a href="org/gradle/platform/base/package-frame.html" target="packageFrame">org.gradle.platform.base</a></li>
+<li><a href="org/gradle/platform/base/binary/package-frame.html" target="packageFrame">org.gradle.platform.base.binary</a></li>
+<li><a href="org/gradle/platform/base/component/package-frame.html" target="packageFrame">org.gradle.platform.base.component</a></li>
+<li><a href="org/gradle/platform/base/plugins/package-frame.html" target="packageFrame">org.gradle.platform.base.plugins</a></li>
+<li><a href="org/gradle/play/package-frame.html" target="packageFrame">org.gradle.play</a></li>
+<li><a href="org/gradle/play/distribution/package-frame.html" target="packageFrame">org.gradle.play.distribution</a></li>
+<li><a href="org/gradle/play/platform/package-frame.html" target="packageFrame">org.gradle.play.platform</a></li>
+<li><a href="org/gradle/play/plugins/package-frame.html" target="packageFrame">org.gradle.play.plugins</a></li>
+<li><a href="org/gradle/play/plugins/ide/package-frame.html" target="packageFrame">org.gradle.play.plugins.ide</a></li>
+<li><a href="org/gradle/play/tasks/package-frame.html" target="packageFrame">org.gradle.play.tasks</a></li>
+<li><a href="org/gradle/play/toolchain/package-frame.html" target="packageFrame">org.gradle.play.toolchain</a></li>
+<li><a href="org/gradle/plugin/devel/package-frame.html" target="packageFrame">org.gradle.plugin.devel</a></li>
+<li><a href="org/gradle/plugin/devel/plugins/package-frame.html" target="packageFrame">org.gradle.plugin.devel.plugins</a></li>
+<li><a href="org/gradle/plugin/devel/tasks/package-frame.html" target="packageFrame">org.gradle.plugin.devel.tasks</a></li>
+<li><a href="org/gradle/plugin/management/package-frame.html" target="packageFrame">org.gradle.plugin.management</a></li>
+<li><a href="org/gradle/plugin/repository/package-frame.html" target="packageFrame">org.gradle.plugin.repository</a></li>
+<li><a href="org/gradle/plugin/use/package-frame.html" target="packageFrame">org.gradle.plugin.use</a></li>
+<li><a href="org/gradle/plugins/ear/package-frame.html" target="packageFrame">org.gradle.plugins.ear</a></li>
+<li><a href="org/gradle/plugins/ear/descriptor/package-frame.html" target="packageFrame">org.gradle.plugins.ear.descriptor</a></li>
+<li><a href="org/gradle/plugins/ide/api/package-frame.html" target="packageFrame">org.gradle.plugins.ide.api</a></li>
+<li><a href="org/gradle/plugins/ide/eclipse/package-frame.html" target="packageFrame">org.gradle.plugins.ide.eclipse</a></li>
+<li><a href="org/gradle/plugins/ide/eclipse/model/package-frame.html" target="packageFrame">org.gradle.plugins.ide.eclipse.model</a></li>
+<li><a href="org/gradle/plugins/ide/idea/package-frame.html" target="packageFrame">org.gradle.plugins.ide.idea</a></li>
+<li><a href="org/gradle/plugins/ide/idea/model/package-frame.html" target="packageFrame">org.gradle.plugins.ide.idea.model</a></li>
+<li><a href="org/gradle/plugins/javascript/base/package-frame.html" target="packageFrame">org.gradle.plugins.javascript.base</a></li>
+<li><a href="org/gradle/plugins/javascript/coffeescript/package-frame.html" target="packageFrame">org.gradle.plugins.javascript.coffeescript</a></li>
+<li><a href="org/gradle/plugins/javascript/envjs/package-frame.html" target="packageFrame">org.gradle.plugins.javascript.envjs</a></li>
+<li><a href="org/gradle/plugins/javascript/envjs/browser/package-frame.html" target="packageFrame">org.gradle.plugins.javascript.envjs.browser</a></li>
+<li><a href="org/gradle/plugins/javascript/envjs/http/package-frame.html" target="packageFrame">org.gradle.plugins.javascript.envjs.http</a></li>
+<li><a href="org/gradle/plugins/javascript/envjs/http/simple/package-frame.html" target="packageFrame">org.gradle.plugins.javascript.envjs.http.simple</a></li>
+<li><a href="org/gradle/plugins/javascript/jshint/package-frame.html" target="packageFrame">org.gradle.plugins.javascript.jshint</a></li>
+<li><a href="org/gradle/plugins/javascript/rhino/package-frame.html" target="packageFrame">org.gradle.plugins.javascript.rhino</a></li>
+<li><a href="org/gradle/plugins/signing/package-frame.html" target="packageFrame">org.gradle.plugins.signing</a></li>
+<li><a href="org/gradle/plugins/signing/signatory/package-frame.html" target="packageFrame">org.gradle.plugins.signing.signatory</a></li>
+<li><a href="org/gradle/plugins/signing/signatory/pgp/package-frame.html" target="packageFrame">org.gradle.plugins.signing.signatory.pgp</a></li>
+<li><a href="org/gradle/plugins/signing/type/package-frame.html" target="packageFrame">org.gradle.plugins.signing.type</a></li>
+<li><a href="org/gradle/plugins/signing/type/pgp/package-frame.html" target="packageFrame">org.gradle.plugins.signing.type.pgp</a></li>
+<li><a href="org/gradle/process/package-frame.html" target="packageFrame">org.gradle.process</a></li>
+<li><a href="org/gradle/testfixtures/package-frame.html" target="packageFrame">org.gradle.testfixtures</a></li>
+<li><a href="org/gradle/testing/base/package-frame.html" target="packageFrame">org.gradle.testing.base</a></li>
+<li><a href="org/gradle/testing/base/plugins/package-frame.html" target="packageFrame">org.gradle.testing.base.plugins</a></li>
+<li><a href="org/gradle/testing/jacoco/plugins/package-frame.html" target="packageFrame">org.gradle.testing.jacoco.plugins</a></li>
+<li><a href="org/gradle/testing/jacoco/tasks/package-frame.html" target="packageFrame">org.gradle.testing.jacoco.tasks</a></li>
+<li><a href="org/gradle/testing/jacoco/tasks/rules/package-frame.html" target="packageFrame">org.gradle.testing.jacoco.tasks.rules</a></li>
+<li><a href="org/gradle/testkit/runner/package-frame.html" target="packageFrame">org.gradle.testkit.runner</a></li>
+<li><a href="org/gradle/tooling/package-frame.html" target="packageFrame">org.gradle.tooling</a></li>
+<li><a href="org/gradle/tooling/events/package-frame.html" target="packageFrame">org.gradle.tooling.events</a></li>
+<li><a href="org/gradle/tooling/events/task/package-frame.html" target="packageFrame">org.gradle.tooling.events.task</a></li>
+<li><a href="org/gradle/tooling/events/test/package-frame.html" target="packageFrame">org.gradle.tooling.events.test</a></li>
+<li><a href="org/gradle/tooling/exceptions/package-frame.html" target="packageFrame">org.gradle.tooling.exceptions</a></li>
+<li><a href="org/gradle/tooling/model/package-frame.html" target="packageFrame">org.gradle.tooling.model</a></li>
+<li><a href="org/gradle/tooling/model/build/package-frame.html" target="packageFrame">org.gradle.tooling.model.build</a></li>
+<li><a href="org/gradle/tooling/model/eclipse/package-frame.html" target="packageFrame">org.gradle.tooling.model.eclipse</a></li>
+<li><a href="org/gradle/tooling/model/gradle/package-frame.html" target="packageFrame">org.gradle.tooling.model.gradle</a></li>
+<li><a href="org/gradle/tooling/model/idea/package-frame.html" target="packageFrame">org.gradle.tooling.model.idea</a></li>
+<li><a href="org/gradle/tooling/model/java/package-frame.html" target="packageFrame">org.gradle.tooling.model.java</a></li>
+<li><a href="org/gradle/tooling/provider/model/package-frame.html" target="packageFrame">org.gradle.tooling.provider.model</a></li>
+<li><a href="org/gradle/workers/package-frame.html" target="packageFrame">org.gradle.workers</a></li>
+</ul>
+</div>
+<p>&nbsp;</p>
+</body>
+</html>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           <html>
+<script type="text/javascript" src="../../js/openURL.js"></script>
+<head>
+<title>Select Tool</title>
+<link href="../../HelpContent.css" rel="stylesheet" type="text/css">
+</head>
+<body class="body"> 
+<p><a href="index.html" id="PriTool-Select"><span class="blackheader"><img src="images/animation-select.gif" border="0"></span></a><script>modifyAnchor("PriTool-Select","3000085")</script></p>
+<p><a href="index.html" id="PriTool-Select_"><span class="blackheader">Select Tool</span></a><script>modifyAnchor("PriTool-Select_","3000085")</script></p>
+<ul> 
+  <li>Select entities to modify when using other tools or commands.</li> 
+</ul> 
+<p><span class="blacksubheader">Tool Operation</span></p>
+<ol> 
+  <li>Click on an entity.</li> 
+</ol> 
+<p><span class="blacksubheader">Modifier Keys</span></p> 
+<ul id="elementToModify"> 
+  <li>Ctrl = Add an entity to set of selected entities</li> 
+  <li>Shift+Ctrl = Subtract an entity from set of selected entities</li> 
+  <li>Shift = Toggle whether an entity is within set of selected entities</li> 
+  <li>Ctrl+A = Select all visible entities in model </li> 
+  <script>replaceText("elementToModify", "Mac", 0, "Option = Add an entity to set of selected entities");</script>
+  <script>replaceText("elementToModify", "Mac", 1, "Shift+Option = Subtract an entity from set of selected entities");</script>
+  <script>replaceText("elementToModify", "Mac", 3, "Command+A = Select all visible entities in model");</script>
+</ul> 
+<p><a href="index.html" id="PriTool-Select__"><span class="blacksubheader">Click to learn about more advanced operations...</span></a><script>modifyAnchor("PriTool-Select__","3000085")</script></p>
+</body>
+</html>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               0\rßm˚¸   u  oWÄ    _keyhttps://googleads.g.doubleclick.net/pagead/ads?client=ca-pub-8952436279404712&output=html&h=350&slotname=7541140991&adk=2690261749&adf=3858286322&w=695&lmt=1550724979&rafmt=12&guci=2.2.0.0.2.2.0.0&format=695x350&url=https%3A%2F%2Fhomius.ru%2Fkak-rasschitat-ploshhad-komnatyi.html&flash=0&wgl=1&adsid=AKATW24CO-qIglf4OsdX4883Y82B_zR21s9SpXSBxMF2jhJ_IgXXCzMa-Geov2NkFUnyOP-Dq56JjNk3TbM4&dt=1550740497583&bpp=22&bdt=3113&fdt=3211&idt=204&shv=r20190214&cbv=r20190131&saldr=aa&abxe=1&prev_fmts=695x350%2C695x350&correlator=6654939757434&frm=20&pv=1&ga_vid=2116513210.1550740501&ga_sid=1550740501&ga_hid=216454840&ga_fc=0&iag=0&icsg=706619495153663&dssz=104&mdo=0&mso=0&u_tz=180&u_his=1&u_java=0&u_h=1080&u_w=1920&u_ah=1040&u_aw=1920&u_cd=24&u_nplug=3&u_nmime=4&adx=156&ady=2774&biw=1378&bih=946&scr_x=0&scr_y=0&eid=21060853&oid=3&ref=https%3A%2F%2Fwww.google.com%2F&rx=0&eae=0&fc=656&brdim=508%2C0%2C508%2C0%2C1920%2C0%2C1411%2C1038%2C1395%2C946&vis=1&rsz=o%7C%7CoeEbr%7C&abl=CS&ppjl=u&pfx=0&fu=272&bc=15&jar=2019-2-19-9&osw_key=1613956922&ifi=4&uci=4.8fr67na6l9ko&fsb=1&xpc=nvnmHTzlGu&p=https%3A//homius.ru&dtd=3668 
+https://doubleclick.net/ËC1˙‡.       x∂x˝-i+[ Í0≈ã'Gü)é€ΩÄ
+GN"Ç®X.†           Œh[óuõ◊Aøgˆµ…π˘¡øË–»¨mø◊<-Ω ÛÀoG;0væ           ŒhJ
+Åõ◊Ao∞…ﬂÊpÊ"Ü˚}·∂vëæX1b5æ’ˆ[Ùô¢           ŒhıÒÉõ◊AmâﬂõLÕˇP,`nL%:«=@ÓÁ?Tâ»ßÕÓƒiµ           ŒhJ'võ◊AnÍ|›aˆÄ◊ÒkìTìÑE:ŸúÓ
+4Ô¡AÍsûá           ŒhIûÜõ◊AÁ˙gå√⁄»H B—ôÀ&58ˇ†:9∞7õï Î           ŒhO\võ◊AÿAóEo˙Ù   ùE`      #œç'A8◊ø…«gñhÂπ§)7¸≥ ÂŒ4}7QÿAóEo˙Ù                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  âPNG
+
+   IHDR      &   ¿Œkñ   tEXtSoftware Adobe ImageReadyq…e<  fiTXtXML:com.adobe.xmp     <?xpacket begin="Ôªø" id="W5M0MpCehiHzreSzNTczkc9d"?> <x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 5.0-c060 61.134777, 2010/02/12-17:32:00        "> <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"> <rdf:Description rdf:about="" xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/" xmlns:stRef="http://ns.adobe.com/xap/1.0/sType/ResourceRef#" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmpMM:OriginalDocumentID="xmp.did:1BBC714841206811B699C1EBFCA5C611" xmpMM:DocumentID="xmp.did:98856C30BD1711DF8B86871BCB6F1114" xmpMM:InstanceID="xmp.iid:98856C2FBD1711DF8B86871BCB6F1114" xmp:CreatorTool="Adobe Photoshop CS5 Macintosh"> <xmpMM:DerivedFrom stRef:instanceID="xmp.iid:C127767324236811B699C1EBFCA5C611" stRef:documentID="xmp.did:1BBC714841206811B699C1EBFCA5C611"/> </rdf:Description> </rdf:RDF> </x:xmpmeta> <?xpacket end="r"?>R_6¸  ˇIDATx⁄ƒV;n√0ï√(“)»ê+tzáÏ=n˜‹°»–5Sê°cä¬±≠ä–≤(—ä
+l}¯D=R“≥F.ﬁËä;ΩøaXk]¯<ÖZKÇM®?ßGS›WÄñ1À˝~ˇ∫›n_†yÎ2£/8Aé@È˚ﬁáœ›n˜∆/ÔáŒE¯]üœÁ7lOÄÔ."0-„õÕÊ=t}Öv7Ú©∫ÆÉ…ùsÜÌhJﬁ"`ÀÈ„¿Ä‚⁄∂5
+Ü‰9‰√nOS‡«≥≠j6Z(e[≈É‹õh\K¿£Äæò„∞Qy‹œ™‡x‰±õ…„dgRQq\¢B<⁄ä©8÷Që€jÏıøRab‡RVH;È-E=1û^ (µ Õ°|òä“ú"‹[)êB_˘ä¡•‡——«Èèt
+(P“IÀÙÕ£BÛÊ·5êœäÿ8uOh(ô ”Ii)›XóO^ÓËj”M÷‰pÓH;ÕÀëK7Ò⁄ºi;I!.©åPÊ∂ùÔzΩö¶i,;Q¢¢ ◊uùÕ
+∞∏è«ÀjµzfÚIÙò”Èt∫Ä-óæñÂ+,≤∆∫u°E¿Ÿ7BÖÌ À"mº@m\iÔH˝P[‘»h‰òmÀb 8¸Œﬁ§TÌúK[ÓÕ´ÿÊCˆø Oz<ôÔ?Ej    IENDÆB`Ç                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
