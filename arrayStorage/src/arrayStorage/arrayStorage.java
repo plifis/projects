@@ -27,8 +27,11 @@ public class arrayStorage {
 		bufRead.mark(256);
 		Character charStr;
 		String strFile;
-		Pattern patternStr = new Pattern ();
-// заполняем массив из файла
+		String regex = "a-zA-z";
+		Pattern patternStr = Pattern.compile(regex);
+		Matcher matcher = patternStr.matcher(strFile);
+			
+		// заполняем массив из файла
 		for (int i = 0; i <= arrayStorage.size() - 1; i++) {
 			if ((strFile = bufRead.readLine()) != null) {
 				
