@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Scanner;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class arrayStorage {
@@ -31,27 +32,27 @@ public class arrayStorage {
 		Pattern patternStr = Pattern.compile(regex);
 		Matcher matcher = patternStr.matcher(strFile);
 			
-		// заполняем массив из файла
+		// enter elements in array
 		for (int i = 0; i <= arrayStorage.size() - 1; i++) {
 			if ((strFile = bufRead.readLine()) != null) {
 				
 			}
 		}
 
-		System.out.println("Введите команду действия с резюме: "
-				+ "1. все (резюме),2. просмотр (конкретного резюме),3. добавить,4. удалить,5. количество (резюме). "
-				+ "Команда вводится без содержимого скобок");
+		System.out.println("Enter command for action with resume "
+				+ "1. all (resume),2. view (current resume), 3. Add (resume), 4. Delete, 5.Quantity (resume). "
+				+ "Please enter command without ");
 		command = sc.nextLine();
-		while (!command.equals("выход")) {
+		while (!command.equals("exit")) {
 			switch (command) {
 
 			case "1":
-			case "все": { // вывод всех резюме				
+			case "all": { 				
 				bufRead.reset();
 				String arrStr = null;
 
 				while ((arrStr = bufRead.readLine()) != null) {
-//				for (int i = 0; i <= arrayStorage.size() - 1; i++) { // реализация для консоли
+//				for (int i = 0; i <= arrayStorage.size() - 1; i++) { 
 //					arrStr = arrayStorage.get(i).toString();
 					System.out.println(arrStr);
 				}
@@ -59,9 +60,9 @@ public class arrayStorage {
 			}
 
 			case "2":
-			case "просмотр": { // просмотр резюме по фамилии
+			case "view": { 
 				bufRead.reset();
-				System.out.println("Укажите ФИО");
+				System.out.println("Enter name");
 				String resumeStr = sc.nextLine();
 				int s = arrayStorage.size();
 				int q = 0;
@@ -77,13 +78,13 @@ public class arrayStorage {
 					;
 				}
 				if (q == 0) {
-					System.out.println("ФИО не найдено.");
+					System.out.println("Name not found");
 				}
 				break;
 			}
 
 			case "3":
-			case "добавить": { // добавление резюме
+			case "Add": { 
 				bufRead.reset();
 				System.out.println("Enter Name ");
 				String nameStr = sc.nextLine();
@@ -100,7 +101,7 @@ public class arrayStorage {
 				break;
 			}
 			case "4":
-			case "удалить": { // удалить резюме по ФИО
+			case "Delete": { 
 				bufRead.reset();
 				System.out.println("Enter Name for delete ");
 				String delStr = sc.nextLine();
@@ -109,13 +110,13 @@ public class arrayStorage {
 					String s = arrayStorage.get(i).getName();
 					if (delStr.equals(s)) {
 						arrayStorage.remove(i);
-						System.out.println("удалено ");
+						System.out.println("deleted ");
 					}
 				}
 				break;
 			}
 			case "5":
-			case "количество": { // сколько всего резюме в базе
+			case "Quantity": { 
 				bufRead.reset();
 				int q = 0;
 				q = arrayStorage.size();
@@ -123,7 +124,7 @@ public class arrayStorage {
 				break;
 			}
 			} // switch
-			System.out.println("Введите следующую команду ");
+			System.out.println("Input next command ");
 			command = sc.nextLine();
 		}
 
