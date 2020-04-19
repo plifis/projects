@@ -28,20 +28,21 @@ public class arrayStorage {
 		bufRead.mark(256);
 		Character charStr;
 		String strFile;
-		String regex = "a-zA-z";
+		String regex = "[a-zA-Z].+[a-zA-Z]";
+		//int regexAge =
+		//int regexExp =
 		Pattern patternStr = Pattern.compile(regex);
-		Matcher matcher = patternStr.matcher(strFile);
+
+		
 			
 		// enter elements in array
-		for (int i = 0; i <= arrayStorage.size() - 1; i++) {
-			if ((strFile = bufRead.readLine()) != null) {
-				
-			}
-		}
+		
+			
+		
 
 		System.out.println("Enter command for action with resume "
 				+ "1. all (resume),2. view (current resume), 3. Add (resume), 4. Delete, 5.Quantity (resume). "
-				+ "Please enter command without ");
+				+ "Please enter command without");
 		command = sc.nextLine();
 		while (!command.equals("exit")) {
 			switch (command) {
@@ -67,16 +68,27 @@ public class arrayStorage {
 				int s = arrayStorage.size();
 				int q = 0;
 				String currentResume;
-
 				while ((currentResume = bufRead.readLine()) != null) {
-					String[] lastIndex = currentResume.split("\\s");
-
-					if (resumeStr.equals(currentResume)) {
-						System.out.println(currentResume);
-						q++;
+					Matcher matcher = patternStr.matcher(currentResume);
+					while (matcher.find()) {					
+						String fullResume = matcher.group();					
+						if (resumeStr.equals(fullResume)) {						
+							System.out.println(currentResume);
+							q++;
+						};
+					
 					}
-					;
 				}
+				
+
+//				while ((currentResume = bufRead.readLine()) != null) {					
+//				String[] lastIndex = currentResume.split("\\s");
+//
+//					if (resumeStr.equals(currentResume)) {
+//						System.out.println(currentResume);
+//						q++;
+//					};
+//				}
 				if (q == 0) {
 					System.out.println("Name not found");
 				}
@@ -119,12 +131,14 @@ public class arrayStorage {
 			case "Quantity": { 
 				bufRead.reset();
 				int q = 0;
-				q = arrayStorage.size();
+				while (bufRead.readLine()!=null) {
+					q++;
+				}
 				System.out.println(q);
 				break;
 			}
 			} // switch
-			System.out.println("Input next command ");
+			System.out.println("Input next command");
 			command = sc.nextLine();
 		}
 
