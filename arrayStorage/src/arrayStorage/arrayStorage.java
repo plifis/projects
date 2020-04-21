@@ -28,16 +28,41 @@ public class arrayStorage {
 		bufRead.mark(256);
 		Character charStr;
 		String strFile;
-		String regex = "[a-zA-Z].+[a-zA-Z]";
-		//int regexAge =
-		//int regexExp =
-		Pattern patternStr = Pattern.compile(regex);
-
+		String regexW = "[a-zA-Z].+[a-zA-Z]";
+		String regexN = "[0-9]";
+		String name;
+		int age;
+		int exp;
+		Pattern patternWord = Pattern.compile(regexW);
+		Pattern patternNumber = Pattern.compile(regexN);
 		
 			
 		// enter elements in array
-		
+		while ((strFile = bufRead.readLine()) != null) {
+			//int i = strFile.length();
+			Matcher matcherWord = patternWord.matcher(strFile);
+			Matcher matcherNumber = patternNumber.matcher(strFile);
+			while (matcherWord.find()) {					
+				name = matcherWord.group();
+				int s = matcherWord.end();
+				for (int n=1; n<=2; n++) 
+				{
+					if(n==1) {
+					age = Integer.parseInt(matcherNumber.group());
+					n++;}
+					else {
+					exp = Integer.parseInt(matcherNumber.group());
+					}
+				}
+				Resume resume = new Resume(name, age, exp);
+				int i = arrayStorage.size();
+				arrayStorage.add(i, resume);
+				i++;
+				System.out.println(resume.toString());
+			}
 			
+		
+		}
 		
 
 		System.out.println("Enter command for action with resume "
@@ -53,80 +78,73 @@ public class arrayStorage {
 				String arrStr = null;
 
 				while ((arrStr = bufRead.readLine()) != null) {
-//				for (int i = 0; i <= arrayStorage.size() - 1; i++) { 
-//					arrStr = arrayStorage.get(i).toString();
 					System.out.println(arrStr);
 				}
 				break;
 			}
 
-			case "2":
-			case "view": { 
-				bufRead.reset();
-				System.out.println("Enter name");
-				String resumeStr = sc.nextLine();
-				int s = arrayStorage.size();
-				int q = 0;
-				String currentResume;
-				while ((currentResume = bufRead.readLine()) != null) {
-					Matcher matcher = patternStr.matcher(currentResume);
-					while (matcher.find()) {					
-						String fullResume = matcher.group();					
-						if (resumeStr.equals(fullResume)) {						
-							System.out.println(currentResume);
-							q++;
-						};
-					
-					}
-				}
-				
-
-//				while ((currentResume = bufRead.readLine()) != null) {					
-//				String[] lastIndex = currentResume.split("\\s");
-//
-//					if (resumeStr.equals(currentResume)) {
-//						System.out.println(currentResume);
-//						q++;
-//					};
+//			case "2":
+//			case "view": { 
+//				bufRead.reset();
+//				System.out.println("Enter name");
+//				String resumeStr = sc.nextLine();
+//				int q = 0;
+//				String currentResume;
+//				while ((currentResume = bufRead.readLine()) != null) {
+//					matcher = patternStr.matcher(currentResume);
+//					while (matcher.find()) {					
+//						String fullResume = matcher.group();					
+//						if (resumeStr.equals(fullResume)) {						
+//							System.out.println(currentResume);
+//							q++;
+//						};					
+//					}
 //				}
-				if (q == 0) {
-					System.out.println("Name not found");
-				}
-				break;
-			}
+//				if (q == 0) {
+//					System.out.println("Name not found");
+//				}
+//				break;
+//			}
 
-			case "3":
-			case "Add": { 
-				bufRead.reset();
-				System.out.println("Enter Name ");
-				String nameStr = sc.nextLine();
-				System.out.println("Enter age ");
-				int age = sc.nextInt();
-				System.out.println("Enter experience ");
-				int exp = sc.nextInt();
-				Resume resume = new Resume(nameStr, age, exp);
-				int i = arrayStorage.size();
-				arrayStorage.add(i, resume);
-				i++;
-				bufWrite.write(resume.toString() + ";" + "\n");
-				bufWrite.flush();
-				break;
-			}
-			case "4":
-			case "Delete": { 
-				bufRead.reset();
-				System.out.println("Enter Name for delete ");
-				String delStr = sc.nextLine();
-				int i;
-				for (i = 0; i <= arrayStorage.size() - 1; i++) {
-					String s = arrayStorage.get(i).getName();
-					if (delStr.equals(s)) {
-						arrayStorage.remove(i);
-						System.out.println("deleted ");
-					}
-				}
-				break;
-			}
+//			case "3":
+//			case "Add": { 
+//				bufRead.reset();
+//				System.out.println("Enter Name ");
+//				String nameStr = sc.nextLine();
+//				System.out.println("Enter age ");
+//				int age = sc.nextInt();
+//				System.out.println("Enter experience ");
+//				int exp = sc.nextInt();
+//				Resume resume = new Resume(nameStr, age, exp);
+//				int i = arrayStorage.size();
+//				arrayStorage.add(i, resume);
+//				i++;
+//				bufWrite.write(resume.toString() + ";" + "\n");
+//				bufWrite.flush();
+//				break;
+//			}
+//			case "4":
+//			case "Delete": { 
+//				bufRead.reset();
+//				System.out.println("Enter Name for delete ");
+//				String delResume = sc.nextLine();
+//				String currentResume;
+//				int q=0;
+//				while ((currentResume = bufRead.readLine()) != null) {
+//					Matcher matcher = patternStr.matcher(currentResume);
+//					while (matcher.find()) {					
+//						String fullResume = matcher.group();					
+//						if (delResume.equals(fullResume)) {						
+//							System.out.println(currentResume);
+//							q++;
+//						};					
+//					}
+//				}
+//				if (q == 0) {
+//					System.out.println("Name not found");
+//				}
+//				break;
+//			}
 			case "5":
 			case "Quantity": { 
 				bufRead.reset();
