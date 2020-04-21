@@ -31,15 +31,15 @@ public class arrayStorage {
 		String regexW = "[a-zA-Z].+[a-zA-Z]";
 		String regexN = "[0-9]";
 		String name;
-		int age;
-		int exp;
+		int age=0;
+		int exp=0;
 		Pattern patternWord = Pattern.compile(regexW);
 		Pattern patternNumber = Pattern.compile(regexN);
 		
 			
 		// enter elements in array
 		while ((strFile = bufRead.readLine()) != null) {
-			//int i = strFile.length();
+			
 			Matcher matcherWord = patternWord.matcher(strFile);
 			Matcher matcherNumber = patternNumber.matcher(strFile);
 			while (matcherWord.find()) {					
