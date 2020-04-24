@@ -40,8 +40,7 @@ public class arrayStorage {
 		// enter elements in array
 	
 					
-					while ((strFile = bufRead.readLine()) != null) {
-						
+					while ((strFile = bufRead.readLine()) != null) {						
 						matcherWord = patternWord.matcher(strFile);
 						matcherNumber = patternNumber.matcher(strFile);
 						while (matcherWord.find()) {					
@@ -134,9 +133,10 @@ public class arrayStorage {
 				while ((currentResume = bufRead.readLine()) != null) {
 					matcherWord = patternWord.matcher(currentResume);
 					while (matcherWord.find()) {					
-						String fullResume = matcherWord.group();					
-						if (delResume.equals(fullResume)) {						
-							System.out.println(currentResume);
+						name = matcherWord.group();					
+						if (delResume.equals(name)) {	
+							fileWrite.write("\n");
+							System.out.println(currentResume +" - Delete");
 							q++;
 						};					
 					}
