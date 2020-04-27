@@ -18,8 +18,8 @@ public class arrayStorage {
 		Scanner sc = new Scanner(System.in);
 		String  welcome = "Enter command for action with resume " + "1. all (resume),2. view (current resume), 3. Add (resume), 4. Delete, 5.Quantity (resume). \"\r\n" + 
 				 "Please enter command withou bracket.";
-		File file = new File("d:/resume1.txt");
-		File temp = File.createTempFile("tempResume", ".txt");
+		File file = new File("d:/resume.txt");
+		File temp = new File ("d:/tmpResume.txt");
 		String command = null;
 		FileWriter fileWrite = new FileWriter(file, true);
 		BufferedWriter bufWrite = new BufferedWriter(fileWrite);
@@ -42,7 +42,10 @@ public class arrayStorage {
 
 		// enter elements in array
 
+		
+		
 		inputElements(arrayStorage, bufRead, age, exp, patternWord, patternNumber);
+		
 
 		System.out.println(welcome);
 		command = sc.nextLine();
@@ -95,31 +98,47 @@ public class arrayStorage {
 				int i = arrayStorage.size();
 				arrayStorage.add(i, resume);
 				i++;
-				bufWrite.write(resume.toString() + ";" + "\n");
-				bufWrite.flush();
-				System.out.println("Done" +"\n" + welcome);
-				inputElements(arrayStorage, bufRead, i, 0, patternWord, patternNumber);
+				
+				inputElements(arrayStorage, bufRead, age, exp, patternWord, patternNumber);
 				break;
 			}
 			case "4":
 			case "Delete": {
 				bufRead.reset();
 				System.out.println("Enter Name for delete ");
-				String delResume = sc.nextLine();
+				String delResume = sc.nextLine();	 
 				String currentResume;
 				int q = 0;
-				while ((currentResume = bufRead.readLine()) != null) {
-					matcherWord = patternWord.matcher(currentResume);
-					while (matcherWord.find()) {
-						name = matcherWord.group();
-						if (delResume.equals(name)) {
-							bufRead.close();
-							bufWrite.write("d\n", 0, 1);
-							System.out.println(currentResume + " - Delete" +"\n" + welcome);
-							q++;
-						};
-					}
-				}
+				int i=0;
+				while ((i <=arrayStorage.size()-1))
+				{
+					name = arrayStorage.get(i).getName();
+					if (delResume.equals(name)){
+						arrayStorage.remove(i);
+						System.out.println(arrayStorage.get(i).toString() + " - Delete" +"\n" + welcome);
+						q++;
+					}					
+				i++;}				
+				for (Resume resume : arrayStorage){
+					
+					addToFile(resume,temp,bufWrite);					
+				}				
+				file.delete();
+				//temp.renameTo(file);
+				
+				
+				
+//				while ((currentResume = bufRead.readLine()) != null) {
+//					matcherWord = patternWord.matcher(currentResume);
+//					while (matcherWord.find()) {
+//						name = matcherWord.group();
+//						if (delResume.equals(name)) {						
+//						
+//							System.out.println(currentResume + " - Delete" +"\n" + welcome);
+//							q++;
+//						};
+//					}
+//				}
 				if (q == 0) {
 					System.out.println("Name not found" +"\n" + welcome);
 				}
@@ -136,12 +155,20 @@ public class arrayStorage {
 				break;
 			}
 			} // switch
-			//System.out.println("Input next command");
+			
 			command = sc.nextLine();
 		}
 		// while
 	}
 
+	public static void addToFile(Resume resume, File file, BufferedWriter bufWrite) throws Exception
+	{
+		bufWrite.flush();
+		bufWrite.write(resume.toString() + ";" + "\n");
+		
+		
+	}
+	
 	public static void inputElements(ArrayList<Resume> arrayStorage, BufferedReader bufRead, int age, int exp,
 			Pattern patternWord, Pattern patternNumber) throws IOException {
 		String strFile;

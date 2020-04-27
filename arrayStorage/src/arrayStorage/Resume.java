@@ -3,10 +3,10 @@ package arrayStorage;
 import java.util.UUID;
 
 public class Resume {
-	String name;
-	UUID id;
-	int age;
-	int experience;
+	private String name;
+	private UUID id;
+	private int age;
+	private int experience;
 
 	public Resume(String s, int a, int e) {
 		name = s;
