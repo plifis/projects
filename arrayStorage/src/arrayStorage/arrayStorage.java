@@ -98,12 +98,13 @@ public class arrayStorage {
 				int i = arrayStorage.size();
 				arrayStorage.add(i, resume);
 				i++;
-				
-				inputElements(arrayStorage, bufRead, age, exp, patternWord, patternNumber);
+				addToFile (resume, bufWrite);
+				inputElements(arrayStorage, bufRead, i, 0, patternWord, patternNumber);
+	//			addToFile(resume, file, bufWrite);
 				break;
 			}
 			case "4":
-			case "Delete": {
+			case "Delete": {	
 				bufRead.reset();
 				System.out.println("Enter Name for delete ");
 				String delResume = sc.nextLine();	 
@@ -121,13 +122,26 @@ public class arrayStorage {
 				i++;}				
 				for (Resume resume : arrayStorage){
 					
-					addToFile(resume,temp,bufWrite);					
-				}				
-				file.delete();
-				//temp.renameTo(file);
+					addToFile (resume, bufWrite);
+					}
+				bufWrite.close();
+				bufRead.close();
+				if (file.delete()) System.out.println("Delete file");
+					if (temp.renameTo(file)) System.out.println("File rename");
+				
+			
+				
+//				bufWrite.close();
+//				bufRead.close();
+//				fileRead.close();
+//				fileWrite.close();		
+//				if (file.delete()) {
+//					temp.renameTo(file);}
+//				else {System.out.println("can not delete or create new file");
+//				}
 				
 				
-				
+//				temp.renameTo(file);				
 //				while ((currentResume = bufRead.readLine()) != null) {
 //					matcherWord = patternWord.matcher(currentResume);
 //					while (matcherWord.find()) {
@@ -142,6 +156,8 @@ public class arrayStorage {
 				if (q == 0) {
 					System.out.println("Name not found" +"\n" + welcome);
 				}
+				
+				
 				break;
 			}
 			case "5":
@@ -161,14 +177,7 @@ public class arrayStorage {
 		// while
 	}
 
-	public static void addToFile(Resume resume, File file, BufferedWriter bufWrite) throws Exception
-	{
-		bufWrite.flush();
-		bufWrite.write(resume.toString() + ";" + "\n");
-		
-		
-	}
-	
+
 	public static void inputElements(ArrayList<Resume> arrayStorage, BufferedReader bufRead, int age, int exp,
 			Pattern patternWord, Pattern patternNumber) throws IOException {
 		String strFile;
@@ -201,5 +210,15 @@ public class arrayStorage {
 			}
 		}
 	}
+	
+	public static void addToFile (Resume resume, BufferedWriter bufWrite) throws IOException
+	{
+		bufWrite.write(resume.toString() + ";" + "\n");
+		bufWrite.flush();
+	//	System.out.println("Done" +"\n");
+		
+	}
+	
+	
 
 }
